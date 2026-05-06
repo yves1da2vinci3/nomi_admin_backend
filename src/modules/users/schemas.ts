@@ -5,6 +5,10 @@ export const listUsersQuerySchema = z.object({
   take: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+export const userDetailQuerySchema = z.object({
+  language: z.string().default("fr"),
+});
+
 export const createUserBodySchema = z.object({
   email: z.string().email(),
   uid: z.string().min(1),
@@ -17,4 +21,6 @@ export const createUserBodySchema = z.object({
   expoPushToken: z.string().optional().nullable(),
 });
 
-export const updateUserBodySchema = createUserBodySchema.partial();
+export const updateUserBodySchema = createUserBodySchema.partial().extend({
+  isSuspended: z.boolean().optional(),
+});

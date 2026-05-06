@@ -3,6 +3,7 @@ import {
   createUserBodySchema,
   listUsersQuerySchema,
   updateUserBodySchema,
+  userDetailQuerySchema,
 } from "./schemas.js";
 import {
   createUser,
@@ -12,6 +13,7 @@ import {
   mapUserToAdminRow,
   updateUser,
 } from "./service.js";
+import { getUserAdminDetail } from "./detail-service.js";
 
 export const usersRouter = Router();
 
@@ -23,6 +25,20 @@ usersRouter.get("/", async (req, res, next) => {
       success: true,
       data: { users: rows, total, skip: q.skip, take: q.take },
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+usersRouter.get("/:id/detail", async (req, res, next) => {
+  try {
+    const q = userDetailQuerySchema.parse(req.query);
+    const detail = await getUserAdminDetail(req.params.id, q.language);
+    if (!detail) {
+      res.status(404).json({ success: false, error: "User not found" });
+      return;
+    }
+    res.json({ success: true, data: detail });
   } catch (e) {
     next(e);
   }
@@ -82,6 +98,7 @@ usersRouter.patch("/:id", async (req, res, next) => {
       ...(body.expoPushToken !== undefined && {
         expoPushToken: body.expoPushToken,
       }),
+      ...(body.isSuspended !== undefined && { isSuspended: body.isSuspended }),
     });
     res.json({ success: true, data: mapUserToAdminRow(updated) });
   } catch (e) {

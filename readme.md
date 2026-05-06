@@ -16,7 +16,7 @@ Copier [`.env.example`](./.env.example) vers `.env` et ajuster.
 | `DATABASE_URL` | Connexion PostgreSQL (souvent identique à `nomi_backend`). |
 | `ADMIN_API_TOKEN` | Secret pour l’en-tête `Authorization: Bearer …` (minimum 8 caractères). |
 | `PORT` | Port HTTP (défaut `4001`). |
-| `ADMIN_CORS_ORIGIN` | Origine du build Vite admin (ex. `http://localhost:5173`). Omis → CORS permissif côté dev. |
+| `ADMIN_CORS_ORIGIN` | Origine du dev server Vite du dossier [`admin/`](../admin/) (ex. `http://localhost:8080`, voir `vite.config`). Omis → CORS permissif côté dev. |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Utilisés par `bun run seed:admin` uniquement (compte `Admin` en base, distinct du jeton API). |
 
 Côté SPA : **`VITE_ADMIN_API_URL`** doit pointer vers l’URL de ce service ; les requêtes authentifiées envoient le Bearer configuré côté front.

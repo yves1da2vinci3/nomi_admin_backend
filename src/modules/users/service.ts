@@ -6,6 +6,8 @@ export function mapUserToAdminRow(u: {
   uid: string;
   email: string;
   displayName: string | null;
+  photoURL?: string | null;
+  isSuspended?: boolean;
   learningLanguage: string | null;
   nativeLanguage: string | null;
   learningLanguages: string[];
@@ -18,6 +20,8 @@ export function mapUserToAdminRow(u: {
     uid: u.uid,
     email: u.email,
     displayName: u.displayName,
+    photoURL: u.photoURL ?? null,
+    isSuspended: u.isSuspended ?? false,
     learningLanguage: u.learningLanguage,
     nativeLanguage: u.nativeLanguage,
     learningLanguages: u.learningLanguages,

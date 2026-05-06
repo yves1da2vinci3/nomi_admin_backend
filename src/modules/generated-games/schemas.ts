@@ -5,6 +5,7 @@ export const listGeneratedGamesQuerySchema = z.object({
   take: z.coerce.number().int().min(1).max(200).default(50),
   gameType: z.string().optional(),
   status: z.string().optional(),
+  userId: z.string().uuid().optional(),
 });
 
 export const createGeneratedGameBodySchema = z.object({

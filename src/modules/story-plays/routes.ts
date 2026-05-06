@@ -7,19 +7,22 @@ export const storyPlaysRouter = Router();
 const querySchema = z.object({
   skip: z.coerce.number().int().min(0).default(0),
   take: z.coerce.number().int().min(1).max(200).default(50),
+  userId: z.string().uuid().optional(),
 });
 
 storyPlaysRouter.get("/", async (req, res, next) => {
   try {
     const q = querySchema.parse(req.query);
+    const where = q.userId ? { userId: q.userId } : {};
     const [rows, total] = await Promise.all([
       prisma.storyPlay.findMany({
+        where,
         skip: q.skip,
         take: q.take,
         orderBy: { startedAt: "desc" },
         include: { game: true },
       }),
-      prisma.storyPlay.count(),
+      prisma.storyPlay.count({ where }),
     ]);
     res.json({
       success: true,

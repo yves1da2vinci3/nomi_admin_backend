@@ -30,6 +30,7 @@ export function mapGameToStoryListItem(g: GeneratedGame) {
     themeDisplay: extractTheme(gd),
     error: g.error,
     gameData: gd as unknown,
+    words: g.words,
   };
 }
 
@@ -47,10 +48,12 @@ export async function listGeneratedGames(params: {
   take: number;
   gameType?: string;
   status?: string;
+  userId?: string;
 }) {
   const where: Record<string, unknown> = {};
   if (params.gameType) where.gameType = params.gameType;
   if (params.status) where.status = params.status;
+  if (params.userId) where.userId = params.userId;
 
   const [rows, total] = await Promise.all([
     prisma.generatedGame.findMany({

@@ -20,6 +20,7 @@ model User {
   uid               String            @unique
   displayName       String?
   photoURL          String?
+  isSuspended       Boolean           @default(false)
   level             String?
   expoPushToken     String?
   webPushSubscription Json?

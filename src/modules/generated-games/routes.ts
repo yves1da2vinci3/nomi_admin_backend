@@ -24,6 +24,7 @@ generatedGamesRouter.get("/", async (req, res, next) => {
       take: q.take,
       gameType: q.gameType,
       status: q.status,
+      userId: q.userId,
     });
     const list = rows.map(mapGameToStoryListItem);
     res.json({
