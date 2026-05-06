@@ -5,6 +5,8 @@ import type { Env } from "../config/env.js";
 import { createAuthApiKeyMiddleware } from "../middleware/auth-api-key.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { mountRoutes } from "../routes/mount-routes.js";
+import { createPublicAuthRouter } from "../modules/auth/routes.js";
+import { authMeRouter } from "../modules/auth/me-routes.js";
 
 export function createApp(env: Env) {
   const app = express();
@@ -23,8 +25,15 @@ export function createApp(env: Env) {
   });
 
   const api = express.Router();
-  api.use(createAuthApiKeyMiddleware(env));
-  mountRoutes(api);
+
+  api.use("/auth", createPublicAuthRouter(env));
+
+  const secured = express.Router();
+  secured.use(createAuthApiKeyMiddleware(env));
+  secured.use("/auth", authMeRouter);
+  mountRoutes(secured);
+  api.use(secured);
+
   app.use("/api/v1", api);
 
   app.use(errorHandler);

@@ -14,8 +14,21 @@ import {
   updateUser,
 } from "./service.js";
 import { getUserAdminDetail } from "./detail-service.js";
+import { getUsersAnalyticsSummary } from "./analytics-service.js";
 
 export const usersRouter = Router();
+
+usersRouter.get("/analytics/summary", async (req, res, next) => {
+  try {
+    const monthsRaw = Number(req.query.months);
+    const months = Number.isFinite(monthsRaw) ? monthsRaw : 12;
+    const metric = req.query.metric === "sessions" ? "sessions" : "signups";
+    const data = await getUsersAnalyticsSummary(months, metric);
+    res.json({ success: true, data });
+  } catch (e) {
+    next(e);
+  }
+});
 
 usersRouter.get("/", async (req, res, next) => {
   try {
