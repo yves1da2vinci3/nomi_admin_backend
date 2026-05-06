@@ -1,0 +1,364 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LexicalBand {
+  foundational
+  developing
+  refined
+}
+
+model User {
+  id                String            @id @default(uuid())
+  email             String            @unique
+  uid               String            @unique
+  displayName       String?
+  photoURL          String?
+  level             String?
+  expoPushToken     String?
+  webPushSubscription Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  learningLanguage  String?
+  learningLanguages String[]
+  nativeLanguage    String?
+  learnedWords      LearnedWord[]
+  scenarioSessions  ScenarioSession[]
+  interpreterSessions InterpreterSession[]
+  userProgress      UserProgress?
+  userLanguageLexicalStages UserLanguageLexicalStage[]
+  storyPlays              StoryPlay[]
+}
+
+model UserLanguageLexicalStage {
+  id               String      @id @default(uuid())
+  userId           String
+  languageCode     String
+  lexicalStage     LexicalBand @default(foundational)
+  lastPromotedAt   DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, languageCode])
+  @@index([userId])
+}
+
+model Scenario {
+  id             String               @id @default(uuid())
+  title          Json
+  description    Json
+  pnjRole        String
+  pnjPersonality String
+  pnjTone        String
+  location       String
+  theme          String
+  imageUrl       String?
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  goals          ScenarioGoal[]
+  sessions       ScenarioSession[]
+  vocabulary     ScenarioVocabulary[]
+}
+
+model ScenarioGoal {
+  id              String   @id @default(uuid())
+  scenarioId      String
+  title           Json
+  description     Json
+  order           Int
+  expectedWords   Json
+  expectedPhrases Json
+  minWords        Int      @default(1)
+  requiredWords   Json
+  optionalWords   Json
+  successMessage  Json
+  failureMessage  Json
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  scenario        Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+}
+
+model ScenarioVocabulary {
+  id          String   @id @default(uuid())
+  scenarioId  String
+  word        String
+  translation Json
+  category    String
+  difficulty  Int      @default(1)
+  context     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  scenario    Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+}
+
+model ScenarioSession {
+  id               String          @id @default(uuid())
+  userId           String
+  scenarioId       String
+  learningLanguage String
+  nativeLanguage   String
+  difficulty       String
+  status           String          @default("active")
+  currentStep      Int             @default(0)
+  totalSteps       Int
+  score            Int             @default(0)
+  duration         Int             @default(0)
+  learnedWords     String[]
+  completed        Boolean         @default(false)
+  startedAt        DateTime        @default(now())
+  completedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  messages         ChatMessage[]
+  corrections      GECCorrection[]
+  scenario         Scenario        @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learnedWordSessions LearnedWordSession[]
+
+  @@index([userId, scenarioId, status])
+}
+
+model ChatMessage {
+  id             String          @id @default(uuid())
+  sessionId      String
+  type           String
+  content        String
+  confidence     Float?
+  step           Int
+  timestamp      DateTime        @default(now())
+  createdAt      DateTime        @default(now())
+  audioUrl       String?
+  audioFileUrl   String?
+  transcription  String?
+  wordTimestamps Json?
+  inputMode      String?
+  session        ScenarioSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  corrections    GECCorrection[]
+}
+
+model GECCorrection {
+  id          String          @id @default(uuid())
+  sessionId   String
+  messageId   String
+  step        Int
+  wrong       String
+  correction  String
+  reason      String?
+  errorType   String?
+  confidence  Float?
+  severity    Float           @default(0.0)
+  createdAt   DateTime        @default(now())
+  userMessage ChatMessage     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  session     ScenarioSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model LearnedWord {
+  id            String      @id @default(uuid())
+  userId        String
+  word          String
+  language      String
+  context       String?
+  difficulty    Int         @default(1)
+  lexicalBand   LexicalBand @default(foundational)
+  timesUsed     Int         @default(0)
+  timesCorrect  Int         @default(0)
+  lastUsed      DateTime    @default(now())
+  masteryLevel  Float       @default(0.0)
+  status        String      @default("active")
+  isFavorite    Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learnedWordSessions       LearnedWordSession[]
+  phraseExamples            Json?
+  phraseExamplesExpiresAt   DateTime?
+
+  @@unique([userId, language, word])
+}
+
+model LearnedWordSession {
+  id                String          @id @default(uuid())
+  learnedWordId     String
+  scenarioSessionId String
+  createdAt         DateTime        @default(now())
+  learnedWord       LearnedWord     @relation(fields: [learnedWordId], references: [id], onDelete: Cascade)
+  scenarioSession   ScenarioSession @relation(fields: [scenarioSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([learnedWordId, scenarioSessionId])
+  @@index([scenarioSessionId])
+}
+
+model UserProgress {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  totalSessions     Int       @default(0)
+  completedSessions Int       @default(0)
+  totalScore        Int       @default(0)
+  averageScore      Float     @default(0.0)
+  totalTimeSpent    Int       @default(0)
+  wordsLearned      Int       @default(0)
+  lastPlayed        DateTime?
+  bestScore         Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GeneratedGame {
+  id               String   @id @default(uuid())
+  userId           String
+  gameType         String
+  status           String   @default("pending")
+  difficulty       String
+  learningLanguage String
+  userLanguage     String
+  scenarioIds      String[]
+  words            String[]
+  gameData         Json?
+  error            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  plays            StoryPlay[]
+
+  @@index([userId, status])
+}
+
+model StoryPlay {
+  id          String    @id @default(uuid())
+  userId      String
+  gameId      String
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  score       Int?
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game GeneratedGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId])
+  @@index([userId, completedAt])
+  @@index([gameId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model InterpreterScenario {
+  id             String               @id @default(uuid())
+  title          Json
+  description    Json
+  location       Json
+  difficulty     String
+  interactionType String              // 'single_pnj' or 'multi_pnj'
+  pnjs           Json                 // Array of { name, role, personality, avatarUrl }
+  imageUrl       String?
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  objectives     InterpreterObjective[]
+  sessions       InterpreterSession[]
+
+  @@index([difficulty, isActive])
+}
+
+model InterpreterObjective {
+  id              String   @id @default(uuid())
+  scenarioId      String
+  title           Json
+  description     Json
+  order           Int
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  scenario        InterpreterScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  @@index([scenarioId, order])
+}
+
+model InterpreterSession {
+  id               String          @id @default(uuid())
+  userId           String
+  scenarioId       String
+  learningLanguage String
+  nativeLanguage   String
+  status           String          @default("active")
+  totalObjectives  Int
+  scoresPerObjective Json?         // { objectiveId: { understanding, accuracy, efficiency, translation, score } }
+  audioUrls        Json?           // { objectiveId: { pnjAudioUrl, userAudioUrl } }
+  llmEval          Json?           // LLM evaluation results
+  vocabularySpotlight Json?         // Extracted words/expressions
+  feedback         Json?            // Final feedback with dimensions
+  completed        Boolean         @default(false)
+  startedAt        DateTime        @default(now())
+  completedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  scenario         InterpreterScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages         InterpretationMessage[]
+
+  @@index([userId, scenarioId, status])
+  @@index([status, completed])
+}
+
+model ScenarioKeywordsHintsCache {
+  id               String   @id @default(cuid())
+  scenarioId       String
+  goalId           String
+  learningLanguage String
+  nativeLanguage   String
+  difficulty       String
+  keywords         Json
+  hints            Json
+  generatedAt      DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([scenarioId, goalId, learningLanguage, nativeLanguage, difficulty])
+  @@index([scenarioId, learningLanguage, nativeLanguage])
+}
+
+model InterpretationMessage {
+  id             String          @id @default(uuid())
+  sessionId      String
+  type           String          // 'pnj' or 'user'
+  speaker        String          // pnjId or userId
+  content        String          // transcript
+  audioUrl       String?
+  objectiveId    String?
+  step           Int
+  wordTimestamps Json?
+  timestamp      DateTime        @default(now())
+  createdAt      DateTime        @default(now())
+  session        InterpreterSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, step])
+  @@index([sessionId, objectiveId])
+}
+
+/** Compte staff pour futur login admin API (admin_backend) — distinct du User app. */
+model Admin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
