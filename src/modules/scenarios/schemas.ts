@@ -2,8 +2,10 @@ import { z } from "zod";
 
 export const listScenariosQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(50).default(10),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
   theme: z.string().optional(),
+  /** Filtre texte sur theme, location, pnjRole */
+  search: z.string().optional(),
   isActive: z
     .enum(["true", "false"])
     .optional()

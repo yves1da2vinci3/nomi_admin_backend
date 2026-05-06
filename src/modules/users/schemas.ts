@@ -2,7 +2,13 @@ import { z } from "zod";
 
 export const listUsersQuerySchema = z.object({
   skip: z.coerce.number().int().min(0).default(0),
-  take: z.coerce.number().int().min(1).max(200).default(50),
+  take: z.coerce.number().int().min(1).max(200).default(20),
+  search: z.string().optional(),
+  /** Langue d’apprentissage (ex. « Spanish ») ; ignoré si vide ou « All Languages » */
+  language: z.string().optional(),
+  level: z.enum(["all", "beginner", "intermediate", "advanced"]).optional().default("all"),
+  /** any | active (!isSuspended) | inactive (isSuspended) | none (aucune ligne, filtres exclusifs off) */
+  accountStatus: z.enum(["any", "active", "inactive", "none"]).optional().default("any"),
 });
 
 export const userDetailQuerySchema = z.object({

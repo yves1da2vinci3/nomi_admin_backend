@@ -116,6 +116,7 @@ export async function listScenarios(params: {
   page: number;
   limit: number;
   theme?: string;
+  search?: string;
   isActive?: boolean;
   language: string;
   includeGoals: boolean;
@@ -125,6 +126,19 @@ export async function listScenarios(params: {
   const where: ScenarioWhereInput = {};
   if (params.theme) where.theme = params.theme;
   if (params.isActive !== undefined) where.isActive = params.isActive;
+  const q = params.search?.trim();
+  if (q) {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : []),
+      {
+        OR: [
+          { theme: { contains: q, mode: "insensitive" } },
+          { location: { contains: q, mode: "insensitive" } },
+          { pnjRole: { contains: q, mode: "insensitive" } },
+        ],
+      },
+    ];
+  }
 
   const include = scenarioIncludeForList(
     params.includeGoals,

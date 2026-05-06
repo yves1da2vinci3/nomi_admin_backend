@@ -144,6 +144,7 @@ scenariosRouter.get("/", async (req, res, next) => {
       page: q.page,
       limit: q.limit,
       theme: q.theme,
+      search: q.search,
       isActive: q.isActive,
       language: q.language,
       includeGoals: q.includeGoals === "true",

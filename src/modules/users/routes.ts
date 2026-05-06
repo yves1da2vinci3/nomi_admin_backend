@@ -33,7 +33,14 @@ usersRouter.get("/analytics/summary", async (req, res, next) => {
 usersRouter.get("/", async (req, res, next) => {
   try {
     const q = listUsersQuerySchema.parse(req.query);
-    const { rows, total } = await listUsers(q.skip, q.take);
+    const { rows, total } = await listUsers({
+      skip: q.skip,
+      take: q.take,
+      search: q.search,
+      language: q.language,
+      level: q.level,
+      accountStatus: q.accountStatus,
+    });
     res.json({
       success: true,
       data: { users: rows, total, skip: q.skip, take: q.take },
