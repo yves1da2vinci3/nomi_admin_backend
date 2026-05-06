@@ -2,7 +2,8 @@
 FROM oven/bun:1-slim AS builder
 WORKDIR /usr/src/app
 
-COPY package.json bun.lock ./
+COPY package.json ./
+COPY bun.lock* ./
 COPY bunfig.toml ./
 
 RUN bun install --frozen-lockfile
@@ -17,7 +18,8 @@ RUN bun run prisma:generate
 FROM oven/bun:1-slim AS runner
 WORKDIR /usr/src/app
 
-COPY package.json bun.lock ./
+COPY package.json ./
+COPY bun.lock* ./
 COPY bunfig.toml ./
 
 RUN bun install --production --frozen-lockfile
@@ -36,4 +38,4 @@ RUN groupadd --gid 1001 nodejs && \
 RUN chown -R nodejs:nodejs /usr/src/app
 USER nodejs
 
-CMD ["bun", "run", "src/index.ts"]
+CMD ["bun", "run", "start"]
