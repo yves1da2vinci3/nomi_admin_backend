@@ -1,6 +1,32 @@
-import type { Scenario, ScenarioGoal, ScenarioVocabulary } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+import type {
+  ScenarioGoalRow,
+  ScenarioInclude,
+  ScenarioMappedSource,
+  ScenarioVocabRow,
+  ScenarioWhereInput,
+  ScenarioGoalUpdateInput,
+  ScenarioVocabularyUpdateInput,
+} from "../../types/prisma-derived.js";
 import { getMultilingualField } from "./utils.js";
+
+function scenarioIncludeForList(
+  includeGoals: boolean,
+  includeVocabulary: boolean
+): ScenarioInclude {
+  const inc: ScenarioInclude = {
+    _count: { select: { goals: true, vocabulary: true } },
+  };
+  if (includeGoals) {
+    inc.goals = { where: { isActive: true }, orderBy: { order: "asc" } };
+  }
+  if (includeVocabulary) {
+    inc.vocabulary = {
+      orderBy: [{ category: "asc" }, { difficulty: "asc" }],
+    };
+  }
+  return inc;
+}
 
 export type ScenarioApiListItem = {
   id: string;
@@ -20,7 +46,7 @@ export type ScenarioApiListItem = {
   vocabulary?: ReturnType<typeof mapVocab>[];
 };
 
-function mapGoal(g: ScenarioGoal, lang: string) {
+function mapGoal(g: ScenarioGoalRow, lang: string) {
   return {
     id: g.id,
     scenarioId: g.scenarioId,
@@ -40,7 +66,7 @@ function mapGoal(g: ScenarioGoal, lang: string) {
   };
 }
 
-function mapVocab(v: ScenarioVocabulary, lang: string) {
+function mapVocab(v: ScenarioVocabRow, lang: string) {
   return {
     id: v.id,
     scenarioId: v.scenarioId,
@@ -55,11 +81,7 @@ function mapVocab(v: ScenarioVocabulary, lang: string) {
 }
 
 export function mapScenarioToApiItem(
-  scenario: Scenario & {
-    _count?: { goals: number; vocabulary: number };
-    goals?: ScenarioGoal[];
-    vocabulary?: ScenarioVocabulary[];
-  },
+  scenario: ScenarioMappedSource,
   language: string,
   includeGoals?: boolean,
   includeVocabulary?: boolean
@@ -80,10 +102,12 @@ export function mapScenarioToApiItem(
   };
   if (scenario._count) base._count = scenario._count;
   if (includeGoals && scenario.goals) {
-    base.goals = scenario.goals.map((g) => mapGoal(g, language));
+    base.goals = scenario.goals.map((g: ScenarioGoalRow) => mapGoal(g, language));
   }
   if (includeVocabulary && scenario.vocabulary) {
-    base.vocabulary = scenario.vocabulary.map((v) => mapVocab(v, language));
+    base.vocabulary = scenario.vocabulary.map((v: ScenarioVocabRow) =>
+      mapVocab(v, language)
+    );
   }
   return base;
 }
@@ -98,26 +122,19 @@ export async function listScenarios(params: {
   includeVocabulary: boolean;
 }) {
   const skip = (params.page - 1) * params.limit;
-  const where: Record<string, unknown> = {};
+  const where: ScenarioWhereInput = {};
   if (params.theme) where.theme = params.theme;
   if (params.isActive !== undefined) where.isActive = params.isActive;
 
-  const include: Record<string, unknown> = {
-    _count: { select: { goals: true, vocabulary: true } },
-  };
-  if (params.includeGoals) {
-    include.goals = { where: { isActive: true }, orderBy: { order: "asc" } };
-  }
-  if (params.includeVocabulary) {
-    include.vocabulary = {
-      orderBy: [{ category: "asc" }, { difficulty: "asc" }],
-    };
-  }
+  const include = scenarioIncludeForList(
+    params.includeGoals,
+    params.includeVocabulary
+  );
 
   const [rows, total] = await Promise.all([
     prisma.scenario.findMany({
       where,
-      include: include as any,
+      include,
       orderBy: { createdAt: "desc" },
       skip,
       take: params.limit,
@@ -126,8 +143,8 @@ export async function listScenarios(params: {
   ]);
 
   return {
-    scenarios: rows.map((s) =>
-      mapScenarioToApiItem(s as any, params.language, params.includeGoals, params.includeVocabulary)
+    scenarios: rows.map((s: ScenarioMappedSource) =>
+      mapScenarioToApiItem(s, params.language, params.includeGoals, params.includeVocabulary)
     ),
     pagination: {
       currentPage: params.page,
@@ -146,23 +163,13 @@ export async function getScenarioById(
   includeGoals: boolean,
   includeVocabulary: boolean
 ) {
-  const include: Record<string, unknown> = {
-    _count: { select: { goals: true, vocabulary: true } },
-  };
-  if (includeGoals) {
-    include.goals = { where: { isActive: true }, orderBy: { order: "asc" } };
-  }
-  if (includeVocabulary) {
-    include.vocabulary = {
-      orderBy: [{ category: "asc" }, { difficulty: "asc" }],
-    };
-  }
+  const include = scenarioIncludeForList(includeGoals, includeVocabulary);
   const s = await prisma.scenario.findUnique({
     where: { id },
-    include: include as any,
+    include,
   });
   return s
-    ? mapScenarioToApiItem(s as any, language, includeGoals, includeVocabulary)
+    ? mapScenarioToApiItem(s, language, includeGoals, includeVocabulary)
     : null;
 }
 
@@ -253,7 +260,7 @@ export async function updateGoalRaw(
 ) {
   return prisma.scenarioGoal.update({
     where: { id: goalId },
-    data: patch as any,
+    data: patch as ScenarioGoalUpdateInput,
   });
 }
 
@@ -289,7 +296,7 @@ export async function updateVocabRaw(
 ) {
   return prisma.scenarioVocabulary.update({
     where: { id: vocabId },
-    data: patch as any,
+    data: patch as ScenarioVocabularyUpdateInput,
   });
 }
 

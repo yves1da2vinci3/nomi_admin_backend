@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
-    "build": "prisma generate",
+    "build": "prisma generate && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "seed:admin": "bun scripts/seed-admin.ts"
   },

@@ -26,6 +26,21 @@ Côté SPA : **`VITE_ADMIN_API_URL`** doit pointer vers l’URL de ce service ; 
 - Le fichier [`prisma/schema.prisma`](./prisma/schema.prisma) est une **copie** de celui de `nomi_backend`. Après chaque migration dans `nomi_backend`, **resynchroniser** ce fichier pour éviter le drift.
 - Génération du client : `bun run prisma:generate` ou `bun run build`.
 
+## Image Docker
+
+Build **multi-stage** (`Dockerfile`) : base **`oven/bun:1-slim`**, étape **builder** avec `bun install` complet + `prisma generate`, étape finale **`bun install --production`** puis copie de `node_modules/.prisma` et `node_modules/@prisma/client` depuis le builder — pas de **TypeScript / prisma CLI / @types** dans l’image livrée. Vérification des types : **`bun run build`** en local ou en CI (pas dans l’image Docker). Utilisateur non-root. Port exposé **4001** (voir `PORT`).
+
+```bash
+cd admin_backend
+docker build -t nomi-admin-backend .
+docker run --rm -p 4001:4001 \
+  -e DATABASE_URL="postgresql://..." \
+  -e ADMIN_API_TOKEN="..." \
+  nomi-admin-backend
+```
+
+Les migrations restent sur **nomi_backend** ; l’image ne lance pas `migrate deploy`.
+
 ## Démarrage
 
 ```bash
