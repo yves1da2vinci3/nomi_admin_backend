@@ -356,10 +356,23 @@ model InterpretationMessage {
 
 /** Compte staff pour futur login admin API (admin_backend) — distinct du User app. */
 model Admin {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  displayName  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String         @id @default(uuid())
+  email          String         @unique
+  passwordHash   String
+  displayName    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  studioProjects StudioProject[]
+}
+
+model StudioProject {
+  id        String   @id @default(uuid())
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  title     String   @default("")
+  state     Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([adminId])
 }

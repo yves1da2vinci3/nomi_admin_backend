@@ -10,6 +10,8 @@ const schema = z.object({
   JWT_SECRET: z.string().min(16),
   /** e.g. 8h, 15m — passed to jose */
   JWT_EXPIRES_IN: z.string().optional().default("8h"),
+  ANTHROPIC_API_KEY: z.string().min(10),
+  ANTHROPIC_MODEL: z.string().optional().default("claude-haiku-4-5-20251001"),
 });
 
 export type Env = z.infer<typeof schema>;

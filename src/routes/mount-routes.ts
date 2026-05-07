@@ -6,6 +6,8 @@ import { generatedGamesRouter } from "../modules/generated-games/routes.js";
 import { storyPlaysRouter } from "../modules/story-plays/routes.js";
 import { notificationsRouter } from "../modules/notifications/routes.js";
 import { subscriptionsRouter } from "../modules/subscriptions/routes.js";
+import { studioProjectsRouter } from "../modules/studio/projects/routes.js";
+import { studioAiRouter } from "../modules/studio/ai/routes.js";
 
 export function mountRoutes(app: Router) {
   app.use("/dashboard", dashboardRouter);
@@ -15,4 +17,6 @@ export function mountRoutes(app: Router) {
   app.use("/story-plays", storyPlaysRouter);
   app.use("/notifications", notificationsRouter);
   app.use("/subscriptions", subscriptionsRouter);
+  app.use("/studio/projects", studioProjectsRouter);
+  app.use("/studio/ai", studioAiRouter);
 }
