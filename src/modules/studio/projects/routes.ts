@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import {
   createProjectBodySchema,
   updateProjectBodySchema,
@@ -19,6 +20,12 @@ import {
   createVocabRaw,
 } from "../../scenarios/service.js";
 import { prisma } from "../../../lib/prisma.js";
+import { getRedisClient, BRAINSTORM_KEY, BRAINSTORM_TTL } from "../../../lib/redis.js";
+
+const brainstormSaveBodySchema = z.object({
+  ideas: z.array(z.unknown()),
+  activeIdeaId: z.string().nullable(),
+});
 
 export const studioProjectsRouter = Router();
 
@@ -176,4 +183,47 @@ studioProjectsRouter.post("/:id/publish-scenario", async (req, res, next) => {
   } catch (e) {
     next(e);
   }
+});
+
+studioProjectsRouter.post("/:id/brainstorm/save", async (req, res, next) => {
+  try {
+    const adminId = req.adminAuth?.sub;
+    if (!adminId) { res.status(401).json({ success: false, error: "Unauthorized" }); return; }
+    const { ideas, activeIdeaId } = brainstormSaveBodySchema.parse(req.body);
+    const redis = getRedisClient();
+    if (redis) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await redis.json.set(BRAINSTORM_KEY(req.params.id), "$", { ideas, activeIdeaId, savedAt: new Date().toISOString() } as any);
+      await redis.expire(BRAINSTORM_KEY(req.params.id), BRAINSTORM_TTL);
+    }
+    res.json({ success: true, data: { ok: true } });
+  } catch (e) { next(e); }
+});
+
+studioProjectsRouter.post("/:id/brainstorm/flush", async (req, res, next) => {
+  try {
+    const adminId = req.adminAuth?.sub;
+    if (!adminId) { res.status(401).json({ success: false, error: "Unauthorized" }); return; }
+    const redis = getRedisClient();
+    if (!redis) { res.json({ success: true, data: { ok: true, persisted: false } }); return; }
+
+    const stored = await redis.json.get(BRAINSTORM_KEY(req.params.id)) as {
+      ideas: unknown[];
+      activeIdeaId: string | null;
+    } | null;
+    if (!stored) { res.json({ success: true, data: { ok: true, persisted: false } }); return; }
+
+    const existing = await prisma.studioProject.findFirst({ where: { id: req.params.id, adminId } });
+    if (!existing) { res.status(404).json({ success: false, error: "Not found" }); return; }
+
+    const merged = {
+      ...(existing.state as Record<string, unknown>),
+      ideas: stored.ideas,
+      activeIdeaId: stored.activeIdeaId,
+    };
+    await updateProject(adminId, req.params.id, { state: merged });
+    await redis.del(BRAINSTORM_KEY(req.params.id));
+
+    res.json({ success: true, data: { ok: true, persisted: true } });
+  } catch (e) { next(e); }
 });

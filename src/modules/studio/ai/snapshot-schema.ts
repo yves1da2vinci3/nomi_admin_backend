@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-const langRecordSchema = z.object({ fr: z.string(), en: z.string() });
+/** Design / dialogue : espagnol optionnel (aligné brainstorm). */
+const designLangSchema = z.object({
+  fr: z.string(),
+  en: z.string(),
+  es: z.string().optional(),
+});
 const ideaSnapshotLangSchema = z.object({
   fr: z.string(),
   en: z.string(),
@@ -23,13 +28,13 @@ const snapshotIdeaSchema = z.object({
 const objectiveSchema = z.object({
   id: z.string(),
   icon: z.enum(["check", "dots", "smile"]),
-  title: langRecordSchema,
-  desc: langRecordSchema,
+  title: designLangSchema,
+  desc: designLangSchema,
 });
 
 const keywordSchema = z.object({
   id: z.string(),
-  label: langRecordSchema,
+  label: designLangSchema,
 });
 
 const snapshotDialogueSchema = z.object({
@@ -38,7 +43,7 @@ const snapshotDialogueSchema = z.object({
   tone: z.string().optional(),
   duration: z.string().optional(),
   ai: z.boolean().optional(),
-  text: langRecordSchema,
+  text: designLangSchema,
   textTruncated: z.boolean().optional(),
 });
 

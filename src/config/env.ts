@@ -20,6 +20,7 @@ const schema = z.object({
     .optional()
     .transform((s) => (s && s.length >= 10 ? s : undefined)),
   ANTHROPIC_MODEL: z.string().optional().default("claude-haiku-4-5-20251001"),
+  REDIS_URL: z.string().url().optional(),
   B2_KEY_ID: z.string().optional(),
   B2_APPLICATION_KEY: z.string().optional(),
   B2_BUCKET_ID: z.string().optional(),

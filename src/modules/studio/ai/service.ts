@@ -81,7 +81,7 @@ const BRAINSTORM_TOOL: Anthropic.Tool = {
 const DESIGN_TOOL: Anthropic.Tool = {
   name: "design_scenario",
   description:
-    "Generate objectives, keywords, and an optional dialogue node for a language learning scenario.",
+    "Generate objectives, keywords, and an optional dialogue node for a language learning scenario. All learner-facing text fields must include French (fr), English (en), and Spanish (es).",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -90,8 +90,8 @@ const DESIGN_TOOL: Anthropic.Tool = {
         items: {
           type: "object",
           properties: {
-            title: LANG_OBJ,
-            desc: LANG_OBJ,
+            title: BRAINSTORM_LANG_OBJ,
+            desc: BRAINSTORM_LANG_OBJ,
             icon: { type: "string", enum: ["check", "dots", "smile"] },
           },
           required: ["title", "desc", "icon"],
@@ -101,7 +101,7 @@ const DESIGN_TOOL: Anthropic.Tool = {
         type: "array",
         items: {
           type: "object",
-          properties: { label: LANG_OBJ },
+          properties: { label: BRAINSTORM_LANG_OBJ },
           required: ["label"],
         },
       },
@@ -109,7 +109,7 @@ const DESIGN_TOOL: Anthropic.Tool = {
         type: "object",
         properties: {
           segment: { type: "string" },
-          text: LANG_OBJ,
+          text: BRAINSTORM_LANG_OBJ,
           tone: { type: "string" },
         },
         required: ["segment", "text", "tone"],
@@ -448,19 +448,19 @@ export async function generateDesign(body: DesignBody) {
   const systemPrompt = `You are a scenario design expert for Nomi language learning platform. \
 Structure interactive dialogue-based scenarios with measurable learning objectives. \
 Target CEFR B1–B2 unless context specifies otherwise. \
-All text fields (title, desc, text, label) must be provided in both French (fr) and English (en). \
+All learner-facing text fields (title, desc, labels, dialogue lines) MUST include all three languages: French (fr), English (en), and Spanish (es). No empty strings for fr, en, or es. \
 When a factual context block is appended to the user message, align with the active scenario and counts; do not pretend draft content exists when counts are zero.`;
 
   const userPrompt = `Design elements for the project "${body.projectName}" (${body.segment || "general"} segment).
 Scope: ${body.scope}.
 ${body.prompt ? `Context: ${body.prompt}` : ""}
-${body.scope.includes("Goals") ? "- Provide 3 objectives with title, desc (both fr/en), and icon (check/dots/smile)." : ""}
-${body.scope.includes("Keywords") ? "- Provide 5–8 vocabulary keywords, each with label in fr and en." : ""}
-${body.scope.includes("Node") || body.scope === "Just a Node" ? "- Provide one opening dialogue node (segment label, text in fr/en, tone)." : ""}${ctxBlock}`;
+${body.scope.includes("Goals") ? "- Provide 3 objectives with title, desc (fr, en, es each), and icon (check/dots/smile)." : ""}
+${body.scope.includes("Keywords") ? "- Provide 5–8 vocabulary keywords, each label with fr, en, and es." : ""}
+${body.scope.includes("Node") || body.scope === "Just a Node" ? "- Provide one opening dialogue node (segment label, dialogue text in fr/en/es, tone)." : ""}${ctxBlock}`;
 
   const response = await anthropicClient().messages.create({
     model: studioModel(),
-    max_tokens: 1200,
+    max_tokens: 1700,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [DESIGN_TOOL],
     tool_choice: { type: "tool", name: "design_scenario" },
@@ -468,9 +468,9 @@ ${body.scope.includes("Node") || body.scope === "Just a Node" ? "- Provide one o
   });
 
   const raw = extractToolInput<{
-    objectives?: { title: LangRecord; desc: LangRecord; icon: string }[];
-    keywords?: { label: LangRecord }[];
-    dialogueNode?: { segment: string; text: LangRecord; tone: string } | null;
+    objectives?: { title: BrainstormLangRecord; desc: BrainstormLangRecord; icon: string }[];
+    keywords?: { label: BrainstormLangRecord }[];
+    dialogueNode?: { segment: string; text: BrainstormLangRecord; tone: string } | null;
   }>(response, "design_scenario");
   return {
     objectives: Array.isArray(raw.objectives) ? raw.objectives : [],
