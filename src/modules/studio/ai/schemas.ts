@@ -133,6 +133,34 @@ export const scenarioChatBodySchema = z.object({
     .array(z.object({ role: z.enum(["user", "agent"]), text: z.string() }))
     .max(20)
     .default([]),
+  scenarioSnapshot: z
+    .object({
+      desc: z.string().optional(),
+      pnj: z.string().optional(),
+      location: z.string().optional(),
+      theme: z.string().optional(),
+      tone: z.string().optional(),
+      level: z.string().optional(),
+      status: z.string().optional(),
+      titleByLang: z.record(z.string()).optional(),
+      descriptionByLang: z.record(z.string()).optional(),
+      goals: z
+        .array(
+          z.object({
+            id: z.string(),
+            titleFr: z.string(),
+            titleEn: z.string().optional(),
+            titleEs: z.string().optional(),
+            descFr: z.string().optional(),
+            descEn: z.string().optional(),
+            descEs: z.string().optional(),
+            successMessage: z.string().optional(),
+            failureMessage: z.string().optional(),
+          })
+        )
+        .optional(),
+    })
+    .optional(),
 });
 
 export type ScenarioComplianceBody = z.infer<typeof scenarioComplianceBodySchema>;

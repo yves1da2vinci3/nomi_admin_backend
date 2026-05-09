@@ -666,22 +666,131 @@ Si un champ est déjà correct, retourne-en une version légèrement améliorée
 const SCENARIO_FIELD_CHAT_TOOL: Anthropic.Tool = {
   name: "scenario_field_assist",
   description:
-    "Reply to the editor helping fill in a specific field of a Nomi language learning scenario. Provide a conversational reply and, when ready, a proposedValue string ready to insert into the field.",
+    "Reply to the editor helping with a Nomi language learning scenario. Provide a conversational reply. When confident a value should be applied, emit uiActions to update the draft immediately. You have full scenario context and can act on any field except the background image.",
   input_schema: {
     type: "object" as const,
     properties: {
       reply: { type: "string" },
       proposedValue: { type: "string" },
+      uiActions: {
+        type: "array",
+        items: {
+          oneOf: [
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["setField"] },
+                field: { type: "string", enum: ["title", "desc", "pnj", "location", "theme", "tone", "level", "status"] },
+                value: { type: "string" },
+              },
+              required: ["op", "field", "value"],
+            },
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["setTitleByLang"] },
+                lang: { type: "string", enum: ["fr", "en", "es"] },
+                value: { type: "string" },
+              },
+              required: ["op", "lang", "value"],
+            },
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["setDescByLang"] },
+                lang: { type: "string", enum: ["fr", "en", "es"] },
+                value: { type: "string" },
+              },
+              required: ["op", "lang", "value"],
+            },
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["updateGoal"] },
+                goalId: { type: "string" },
+                field: { type: "string", enum: ["successMessage", "failureMessage"] },
+                value: { type: "string" },
+              },
+              required: ["op", "goalId", "field", "value"],
+            },
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["updateGoalLang"] },
+                goalId: { type: "string" },
+                field: { type: "string", enum: ["title", "desc"] },
+                lang: { type: "string", enum: ["fr", "en", "es"] },
+                value: { type: "string" },
+              },
+              required: ["op", "goalId", "field", "lang", "value"],
+            },
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["addGoal"] },
+                titleFr: { type: "string" },
+                titleEn: { type: "string" },
+                titleEs: { type: "string" },
+                descFr: { type: "string" },
+              },
+              required: ["op", "titleFr"],
+            },
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["removeGoal"] },
+                goalId: { type: "string" },
+              },
+              required: ["op", "goalId"],
+            },
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["reorderGoals"] },
+                goalIds: { type: "array", items: { type: "string" } },
+              },
+              required: ["op", "goalIds"],
+            },
+            {
+              type: "object",
+              properties: {
+                op: { type: "string", enum: ["switchTab"] },
+                tab: { type: "string", enum: ["general", "goals", "preview"] },
+              },
+              required: ["op", "tab"],
+            },
+          ],
+        },
+      },
     },
     required: ["reply"],
   },
 };
 
 export async function generateScenarioFieldChat(body: ScenarioChatBody) {
-  const systemPrompt = `Tu es un assistant éditorial Nomi. Tu aides un concepteur à rédiger le contenu \
-d'un champ spécifique d'un scénario pédagogique d'apprentissage des langues. \
+  const snap = body.scenarioSnapshot;
+  const snapshotLines = snap
+    ? [
+        "\nContexte complet du scénario :",
+        snap.desc ? `- Description : ${snap.desc}` : "",
+        snap.pnj ? `- Rôle PNJ : ${snap.pnj}` : "",
+        snap.location ? `- Lieu : ${snap.location}` : "",
+        snap.theme ? `- Thème : ${snap.theme}` : "",
+        snap.tone ? `- Ton : ${snap.tone}` : "",
+        snap.level ? `- Niveau : ${snap.level}` : "",
+        snap.goals?.length
+          ? `- Objectifs : ${snap.goals.map((g) => `"${g.titleFr}" (id:${g.id})`).join(", ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
+
+  const systemPrompt = `Tu es un assistant éditorial Nomi. Tu aides un concepteur à améliorer un scénario pédagogique d'apprentissage des langues. \
 Réponds en français. Sois concis et actionnable. \
-Quand tu proposes un texte prêt à insérer dans le champ, fournis-le dans "proposedValue".`;
+Tu as accès à tout le contexte du scénario et peux recommander des changements sur n'importe quel champ sauf l'image. \
+Quand tu proposes une valeur prête à insérer dans le champ courant, mets-la dans "proposedValue". \
+Quand tu es confiant qu'une valeur doit être appliquée immédiatement, émets un "uiActions" correspondant.${snapshotLines}`;
 
   const history: Anthropic.MessageParam[] = body.history.map((m) => ({
     role: m.role === "user" ? "user" : "assistant",
@@ -701,14 +810,14 @@ Message : ${body.message}`;
 
   const response = await anthropicClient().messages.create({
     model: studioModel(),
-    max_tokens: 512,
+    max_tokens: 1024,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [SCENARIO_FIELD_CHAT_TOOL],
     tool_choice: { type: "tool", name: "scenario_field_assist" },
     messages,
   });
 
-  return extractToolInput<{ reply: string; proposedValue?: string }>(
+  return extractToolInput<{ reply: string; proposedValue?: string; uiActions?: unknown[] }>(
     response,
     "scenario_field_assist"
   );
