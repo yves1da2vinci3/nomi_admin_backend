@@ -52,3 +52,6 @@ export const createVocabBodySchema = z.object({
   difficulty: z.number().int().optional(),
   context: z.string().nullable().optional(),
 });
+
+export const updateGoalBodySchema = createGoalBodySchema.partial();
+export const updateVocabBodySchema = createVocabBodySchema.partial();

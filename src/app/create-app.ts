@@ -7,6 +7,7 @@ import { errorHandler } from "../middleware/error-handler.js";
 import { mountRoutes } from "../routes/mount-routes.js";
 import { createPublicAuthRouter } from "../modules/auth/routes.js";
 import { authMeRouter } from "../modules/auth/me-routes.js";
+import { uploadRouter } from "../modules/upload/routes.js";
 
 export function createApp(env: Env) {
   const app = express();
@@ -31,7 +32,8 @@ export function createApp(env: Env) {
   const secured = express.Router();
   secured.use(createAuthApiKeyMiddleware(env));
   secured.use("/auth", authMeRouter);
-  mountRoutes(secured);
+  secured.use("/upload", uploadRouter);
+  mountRoutes(secured, env);
   api.use(secured);
 
   app.use("/api/v1", api);

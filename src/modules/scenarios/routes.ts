@@ -4,7 +4,9 @@ import {
   createScenarioBodySchema,
   createVocabBodySchema,
   listScenariosQuerySchema,
+  updateGoalBodySchema,
   updateScenarioBodySchema,
+  updateVocabBodySchema,
 } from "./schemas.js";
 import {
   createGoalRaw,
@@ -14,6 +16,7 @@ import {
   deleteScenarioRaw,
   deleteVocabRaw,
   getScenarioById,
+  getScenarioByIdRaw,
   listScenarios,
   mapScenarioToApiItem,
   updateGoalRaw,
@@ -72,8 +75,12 @@ goalsRouter.post("/", async (req, res, next) => {
 
 goalsRouter.patch("/:goalId", async (req, res, next) => {
   try {
-    const patch = req.body as Record<string, unknown>;
-    const g = await updateGoalRaw(req.params.goalId, patch);
+    const parsed = updateGoalBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.flatten() });
+      return;
+    }
+    const g = await updateGoalRaw(req.params.goalId, parsed.data);
     res.json({ success: true, data: g });
   } catch (e) {
     next(e);
@@ -117,8 +124,12 @@ vocabRouter.post("/", async (req, res, next) => {
 
 vocabRouter.patch("/:vocabId", async (req, res, next) => {
   try {
-    const patch = req.body as Record<string, unknown>;
-    const v = await updateVocabRaw(req.params.vocabId, patch);
+    const parsed = updateVocabBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.flatten() });
+      return;
+    }
+    const v = await updateVocabRaw(req.params.vocabId, parsed.data);
     res.json({ success: true, data: v });
   } catch (e) {
     next(e);
@@ -179,7 +190,10 @@ scenariosRouter.get("/:id", async (req, res, next) => {
     const language = (req.query.language as string) || "fr";
     const includeGoals = req.query.includeGoals === "true";
     const includeVocabulary = req.query.includeVocabulary === "true";
-    const item = await getScenarioById(req.params.id, language, includeGoals, includeVocabulary);
+    const rawGoals = req.query.rawGoals === "true";
+    const item = rawGoals
+      ? await getScenarioByIdRaw(req.params.id, language, includeGoals, includeVocabulary)
+      : await getScenarioById(req.params.id, language, includeGoals, includeVocabulary);
     if (!item) {
       res.status(404).json({ success: false, error: "Scenario not found" });
       return;

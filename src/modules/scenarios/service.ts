@@ -178,13 +178,47 @@ export async function getScenarioById(
   includeVocabulary: boolean
 ) {
   const include = scenarioIncludeForList(includeGoals, includeVocabulary);
-  const s = await prisma.scenario.findUnique({
-    where: { id },
-    include,
-  });
-  return s
-    ? mapScenarioToApiItem(s, language, includeGoals, includeVocabulary)
-    : null;
+  const s = await prisma.scenario.findUnique({ where: { id }, include });
+  return s ? mapScenarioToApiItem(s, language, includeGoals, includeVocabulary) : null;
+}
+
+/** Admin-only: returns raw multilingual JSON objects for title, description, and goals. */
+export async function getScenarioByIdRaw(
+  id: string,
+  language: string,
+  includeGoals: boolean,
+  includeVocabulary: boolean
+) {
+  const include = scenarioIncludeForList(includeGoals, includeVocabulary);
+  const s = await prisma.scenario.findUnique({ where: { id }, include });
+  if (!s) return null;
+  const base = mapScenarioToApiItem(s, language, false, includeVocabulary) as ScenarioApiListItem & {
+    titleRaw: unknown;
+    descriptionRaw: unknown;
+  };
+  // Return raw multilingual JSON for admin editing
+  base.titleRaw = s.title;
+  base.descriptionRaw = s.description;
+  if (includeGoals && s.goals) {
+    base.goals = (s.goals as ScenarioGoalRow[]).map((g) => ({
+      id: g.id,
+      scenarioId: g.scenarioId,
+      title: g.title as unknown as string,
+      description: g.description as unknown as string,
+      order: g.order,
+      expectedWords: g.expectedWords,
+      expectedPhrases: g.expectedPhrases,
+      minWords: g.minWords,
+      requiredWords: g.requiredWords,
+      optionalWords: g.optionalWords,
+      successMessage: g.successMessage as unknown as string,
+      failureMessage: g.failureMessage as unknown as string,
+      isActive: g.isActive,
+      createdAt: g.createdAt.toISOString(),
+      updatedAt: g.updatedAt.toISOString(),
+    }));
+  }
+  return base;
 }
 
 export async function createScenarioRaw(data: {

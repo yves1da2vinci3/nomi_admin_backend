@@ -6,7 +6,7 @@ function parseDays(input: unknown, fallback = 30): number {
   return Math.min(Math.floor(n), 365);
 }
 
-/** Agrégats depuis table Notification — champs « delivered/opened » approximés (pas de colonnes dédiées). */
+/** Agrégats depuis table Notification — pas de tracking livraison / échecs réels ; réponse typée estimate. */
 export async function getNotificationMetrics(queryDays: unknown) {
   const days = parseDays(queryDays, 30);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -22,9 +22,9 @@ export async function getNotificationMetrics(queryDays: unknown) {
   const failed = 0;
 
   return {
-    demoPartial: true,
-    note:
-      "Pas de canal push/email séparé en DB — sent/delivered = volume notifications période ; opened ≈ isRead.",
+    estimate: true as const,
+    methodologyNote:
+      "sent and delivered both count notification rows in the window (in-app only); opened uses isRead; push/email channels are not split — failed deliveries are not tracked (failed stays 0).",
     sent,
     delivered,
     opened,

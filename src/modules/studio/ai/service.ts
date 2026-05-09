@@ -1,5 +1,26 @@
-import { anthropic, STUDIO_MODEL } from "../../../lib/anthropic.js";
+import {
+  getAnthropicClient,
+  studioModelFromEnv,
+} from "../../../lib/anthropic.js";
+import type { Env } from "../../../config/env.js";
 import type Anthropic from "@anthropic-ai/sdk";
+
+let _studioEnv: Env | undefined;
+
+/** Called by studio AI router middleware before handlers. */
+export function configureStudioAiEnv(env: Env): void {
+  _studioEnv = env;
+}
+
+function anthropicClient(): Anthropic {
+  const c = getAnthropicClient(_studioEnv!);
+  if (!c) throw new Error("ANTHROPIC_UNAVAILABLE");
+  return c;
+}
+
+function studioModel(): string {
+  return studioModelFromEnv(_studioEnv!);
+}
 import type {
   BrainstormBody,
   DesignBody,
@@ -116,7 +137,7 @@ const REVIEW_TOOL: Anthropic.Tool = {
 const CHAT_TOOL: Anthropic.Tool = {
   name: "brainstorm_chat_reply",
   description:
-    "Reply as a collaborative AI studio agent helping to develop a language learning scenario.",
+    "Reply as a collaborative AI studio agent helping to develop a language learning scenario. When suggesting a specific concrete idea that could be added as an idea card to the board, include it in structuredIdea.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -131,6 +152,16 @@ const CHAT_TOOL: Anthropic.Tool = {
           },
           required: ["id", "label"],
         },
+      },
+      structuredIdea: {
+        type: "object",
+        description: "Include only when the reply contains a specific concrete scenario idea to add to the board.",
+        properties: {
+          theme: { type: "string" },
+          title: LANG_OBJ,
+          desc: LANG_OBJ,
+        },
+        required: ["theme", "title", "desc"],
       },
     },
     required: ["reply"],
@@ -225,8 +256,8 @@ Ideas should be grounded in realistic social interactions, culturally relevant, 
   const userPrompt = `Generate ${body.count} brainstorm ideas for a project called "${body.projectName}" \
 in the "${body.theme}" theme.${body.prompt ? `\n\nAdditional direction: ${body.prompt}` : ""}`;
 
-  const response = await anthropic.messages.create({
-    model: STUDIO_MODEL,
+  const response = await anthropicClient().messages.create({
+    model: studioModel(),
     max_tokens: 1200,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [BRAINSTORM_TOOL],
@@ -252,8 +283,8 @@ ${body.scope.includes("Goals") ? "- Provide 3 objectives with title, desc (both 
 ${body.scope.includes("Keywords") ? "- Provide 5–8 vocabulary keywords, each with label in fr and en." : ""}
 ${body.scope.includes("Node") || body.scope === "Just a Node" ? "- Provide one opening dialogue node (segment label, text in fr/en, tone)." : ""}`;
 
-  const response = await anthropic.messages.create({
-    model: STUDIO_MODEL,
+  const response = await anthropicClient().messages.create({
+    model: studioModel(),
     max_tokens: 1200,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [DESIGN_TOOL],
@@ -281,8 +312,8 @@ ${body.prompt ? `\nSpecific question: ${body.prompt}` : ""}
 
 Provide targeted suggestions and a one-sentence summary.`;
 
-  const response = await anthropic.messages.create({
-    model: STUDIO_MODEL,
+  const response = await anthropicClient().messages.create({
+    model: studioModel(),
     max_tokens: 800,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [REVIEW_TOOL],
@@ -312,8 +343,8 @@ Réponds toujours avec une réponse structurée et 1–3 actions suggérées que
     { role: "user", content: body.message },
   ];
 
-  const response = await anthropic.messages.create({
-    model: STUDIO_MODEL,
+  const response = await anthropicClient().messages.create({
+    model: studioModel(),
     max_tokens: 512,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [CHAT_TOOL],
@@ -324,6 +355,7 @@ Réponds toujours avec une réponse structurée et 1–3 actions suggérées que
   return extractToolInput<{
     reply: string;
     suggestedActions?: { id: string; label: string }[];
+    structuredIdea?: { theme: string; title: LangRecord; desc: LangRecord };
   }>(response, "brainstorm_chat_reply");
 }
 
@@ -386,8 +418,8 @@ Si un champ est déjà correct, retourne-en une version légèrement améliorée
     .filter(Boolean)
     .join("\n");
 
-  const response = await anthropic.messages.create({
-    model: STUDIO_MODEL,
+  const response = await anthropicClient().messages.create({
+    model: studioModel(),
     max_tokens: 1000,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [SCENARIO_COMPLIANCE_TOOL],
@@ -439,8 +471,8 @@ Message : ${body.message}`;
     { role: "user", content: contextMsg },
   ];
 
-  const response = await anthropic.messages.create({
-    model: STUDIO_MODEL,
+  const response = await anthropicClient().messages.create({
+    model: studioModel(),
     max_tokens: 512,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [SCENARIO_FIELD_CHAT_TOOL],
@@ -477,8 +509,8 @@ Génère des successMessage et failureMessage pédagogiques et encourageants.`;
     .filter(Boolean)
     .join("\n");
 
-  const response = await anthropic.messages.create({
-    model: STUDIO_MODEL,
+  const response = await anthropicClient().messages.create({
+    model: studioModel(),
     max_tokens: 2500,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [FORMAT_SCENARIO_TOOL],

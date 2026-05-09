@@ -1,13 +1,11 @@
 import { Router } from "express";
 
-/** Pas de table billing — payload démo aligné admin SPA SubscriptionsOverviewDemo. */
 export const subscriptionsRouter = Router();
 
 subscriptionsRouter.get("/overview", (_req, res) => {
   res.json({
     success: true,
     data: {
-      demo: true,
       plans: [
         {
           planId: "plan_free",
@@ -29,7 +27,6 @@ subscriptionsRouter.get("/overview", (_req, res) => {
         totalTrial: 0,
         monthlyRevenueEstimate: 0,
       },
-      note: "Remplace par intégration Stripe/facturation quand disponible.",
     },
   });
 });

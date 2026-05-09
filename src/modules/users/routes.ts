@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { SignJWT } from "jose";
 import {
   createUserBodySchema,
   listUsersQuerySchema,
@@ -130,6 +131,52 @@ usersRouter.delete("/:id", async (req, res, next) => {
   try {
     await deleteUser(req.params.id);
     res.json({ success: true, data: { deleted: true } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+usersRouter.post("/:id/reset-password", async (req, res, next) => {
+  try {
+    const u = await getUserById(req.params.id);
+    if (!u) {
+      res.status(404).json({ success: false, error: "User not found" });
+      return;
+    }
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? "fallback-secret-32-chars-minimum");
+    const token = await new SignJWT({ sub: u.id, type: "password-reset" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(secret);
+    const appUrl = process.env.APP_URL ?? "https://app.nomi.ai";
+    res.json({
+      success: true,
+      data: { resetLink: `${appUrl}/reset-password?token=${token}` },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+usersRouter.post("/:id/magic-link", async (req, res, next) => {
+  try {
+    const u = await getUserById(req.params.id);
+    if (!u) {
+      res.status(404).json({ success: false, error: "User not found" });
+      return;
+    }
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? "fallback-secret-32-chars-minimum");
+    const token = await new SignJWT({ sub: u.id, email: u.email, type: "magic-link" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("15m")
+      .sign(secret);
+    const appUrl = process.env.APP_URL ?? "https://app.nomi.ai";
+    res.json({
+      success: true,
+      data: { link: `${appUrl}/auth/magic?token=${token}` },
+    });
   } catch (e) {
     next(e);
   }

@@ -15,11 +15,15 @@ Copier [`.env.example`](./.env.example) vers `.env` et ajuster.
 |----------|------|
 | `DATABASE_URL` | Connexion PostgreSQL (souvent identique à `nomi_backend`). |
 | `ADMIN_API_TOKEN` | Secret pour l’en-tête `Authorization: Bearer …` (minimum 8 caractères). |
+| `ADMIN_API_ACTING_SUB` | Optionnel — UUID d’une ligne `Admin` (ex. retourné par `seed:admin`). Si défini, un Bearer égal à `ADMIN_API_TOKEN` remplit `req.adminAuth.sub` pour les routes qui en ont besoin (`/studio/projects`, etc.). Sinon le jeton API traverse toujours l’auth mais sans identité admin (Studio projet → 401). |
+| `ADMIN_API_ACTING_EMAIL` | Optionnel — email associé au « acting » API token (défaut `api-token@local.invalid`). |
+| `ANTHROPIC_API_KEY` | Optionnel — requis uniquement pour **`/studio/ai/*`**. Sans clé (ou &lt; 10 caractères), ces routes répondent **503** ; le reste de l’API fonctionne. |
+| `ANTHROPIC_MODEL` | Modèle Claude (défaut inchangé dans `env.ts`). |
 | `PORT` | Port HTTP (défaut `4001`). |
 | `ADMIN_CORS_ORIGIN` | Origine du dev server Vite du dossier [`admin/`](../admin/) (ex. `http://localhost:8080`, voir `vite.config`). Omis → CORS permissif côté dev. |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Utilisés par `bun run seed:admin` uniquement (compte `Admin` en base, distinct du jeton API). |
 
-Côté SPA : **`VITE_ADMIN_API_URL`** doit pointer vers l’URL de ce service ; les requêtes authentifiées envoient le Bearer configuré côté front.
+Côté SPA : **`VITE_ADMIN_API_URL`** doit pointer vers l’URL de ce service ; les requêtes authentifiées envoient le **JWT** de session après login, ou **`VITE_ADMIN_API_TOKEN`** en secours (dev). Pour Studio/projets avec jeton longue durée uniquement, configurez **`ADMIN_API_ACTING_SUB`** avec l’UUID du compte admin seedé.
 
 ## Prisma et schéma
 

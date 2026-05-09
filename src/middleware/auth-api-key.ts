@@ -18,7 +18,13 @@ export function createAuthApiKeyMiddleware(env: Env): RequestHandler {
     }
 
     if (bearer === apiToken) {
-      delete req.adminAuth;
+      const actingSub = env.ADMIN_API_ACTING_SUB;
+      const actingEmail = env.ADMIN_API_ACTING_EMAIL ?? "api-token@local.invalid";
+      if (actingSub) {
+        req.adminAuth = { sub: actingSub, email: actingEmail };
+      } else {
+        delete req.adminAuth;
+      }
       next();
       return;
     }
