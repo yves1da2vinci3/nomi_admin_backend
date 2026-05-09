@@ -29,9 +29,12 @@ import type {
   PublishScenarioBody,
   ScenarioChatBody,
   ScenarioComplianceBody,
+  StudioChatContext,
 } from "./schemas.js";
 
 type LangRecord = { fr: string; en: string };
+/** Brainstorming / chat idée : trois langues obligatoires pour les textes générés. */
+type BrainstormLangRecord = { fr: string; en: string; es: string };
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -39,6 +42,16 @@ const LANG_OBJ = {
   type: "object" as const,
   properties: { fr: { type: "string" }, en: { type: "string" } },
   required: ["fr", "en"],
+};
+
+const BRAINSTORM_LANG_OBJ = {
+  type: "object" as const,
+  properties: {
+    fr: { type: "string" },
+    en: { type: "string" },
+    es: { type: "string" },
+  },
+  required: ["fr", "en", "es"],
 };
 
 const BRAINSTORM_TOOL: Anthropic.Tool = {
@@ -54,8 +67,8 @@ const BRAINSTORM_TOOL: Anthropic.Tool = {
           type: "object",
           properties: {
             theme: { type: "string" },
-            title: LANG_OBJ,
-            desc: LANG_OBJ,
+            title: BRAINSTORM_LANG_OBJ,
+            desc: BRAINSTORM_LANG_OBJ,
           },
           required: ["theme", "title", "desc"],
         },
@@ -137,7 +150,7 @@ const REVIEW_TOOL: Anthropic.Tool = {
 const CHAT_TOOL: Anthropic.Tool = {
   name: "brainstorm_chat_reply",
   description:
-    "Reply as a collaborative AI studio agent helping to develop a language learning scenario. When suggesting a specific concrete idea that could be added as an idea card to the board, include it in structuredIdea.",
+    "Reply as a collaborative AI studio agent helping to develop a language learning scenario. Adapt suggestions and uiActions to the current Studio phase provided in the conversation context. When suggesting a specific concrete idea that could be added as an idea card to the board, include it in structuredIdea.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -155,13 +168,40 @@ const CHAT_TOOL: Anthropic.Tool = {
       },
       structuredIdea: {
         type: "object",
-        description: "Include only when the reply contains a specific concrete scenario idea to add to the board.",
+        description:
+          "Include only when the reply contains a specific concrete scenario idea to add to the board. Title and description must include fr, en, and es.",
         properties: {
           theme: { type: "string" },
-          title: LANG_OBJ,
-          desc: LANG_OBJ,
+          title: BRAINSTORM_LANG_OBJ,
+          desc: BRAINSTORM_LANG_OBJ,
         },
         required: ["theme", "title", "desc"],
+      },
+      uiActions: {
+        type: "array",
+        description:
+          "Optional machine actions for the client UI. Use setIdeaStatus to move idea cards; use setPhase only when explicitly aligned with user intent.",
+        items: {
+          type: "object",
+          properties: {
+            op: {
+              type: "string",
+              enum: ["setIdeaStatus", "setPhase"],
+            },
+            ideaId: { type: "string", description: "Required when op is setIdeaStatus" },
+            ideaStatus: {
+              type: "string",
+              enum: ["idea", "toValidate", "approved"],
+              description: "Target column when op is setIdeaStatus",
+            },
+            phase: {
+              type: "string",
+              enum: ["brainstorming", "design", "review", "production"],
+              description: "Required when op is setPhase",
+            },
+          },
+          required: ["op"],
+        },
       },
     },
     required: ["reply"],
@@ -247,41 +287,176 @@ function extractToolInput<T>(
 
 // ─── Service functions ────────────────────────────────────────────────────────
 
+function formatStudioProjectSnapshotSection(c: StudioChatContext | undefined): string {
+  const snap = c && typeof c === "object" ? c.studioProjectSnapshot : undefined;
+  if (!snap || typeof snap !== "object") return "";
+  try {
+    return `\n\n--- studioProjectSnapshot (JSON factuel, synchronisé depuis le Studio) ---\n${JSON.stringify(snap, null, 2)}`;
+  } catch {
+    return "";
+  }
+}
+
+function snapshotTruthInstructions(forChat: boolean): string {
+  const tail = forChat
+    ? " Propose suggestedActions et uiActions adaptés ; ne change pas de phase sans accord clair."
+    : "";
+  return `\n\n[Instructions données projet] Le snapshot JSON ci-dessus (si présent) est la vérité factuelle du projet dans l’interface. Tu dois t’appuyer dessus pour les idées, objectifs, mots-clés, nœuds de dialogue, QA, production et messages agent. Ne dis jamais que tu n’as « pas accès » au tableau Brainstorming, aux titres des idées, au design ou à l’historique du chat lorsque le snapshot contient ces informations (champs ou tableaux non vides). Si une valeur est marquée tronquée ([tronqué], flags *Truncated, chatNotes), explique ce qui est visible et ce qui est réduit, sans prétendre que tout le reste est inaccessible.${tail}`;
+}
+
+function studioContextLines(c: StudioChatContext | undefined): string[] {
+  if (!c || typeof c !== "object") return [];
+  const lines: string[] = [];
+  if (c.studioPhase) lines.push(`- Vue Studio actuelle : ${c.studioPhase}`);
+  if (c.activeIdeaId != null)
+    lines.push(`- Scénario actif (id idée) : ${c.activeIdeaId || "aucun"}`);
+  if (c.activeIdeaSummary)
+    lines.push(
+      `- Titre idée active : FR « ${c.activeIdeaSummary.fr} » / EN « ${c.activeIdeaSummary.en} »` +
+        ("es" in c.activeIdeaSummary && c.activeIdeaSummary.es != null && c.activeIdeaSummary.es !== ""
+          ? ` / ES « ${c.activeIdeaSummary.es} »`
+          : "")
+    );
+  if (c.ideasOverview)
+    lines.push(
+      `- Idées par colonne — Idea: ${c.ideasOverview.idea}, ToValidate: ${c.ideasOverview.toValidate}, Approved: ${c.ideasOverview.approved}`
+    );
+  if (c.designSummary)
+    lines.push(
+      `- Design : ${c.designSummary.objectives} objectifs, ${c.designSummary.keywords} mots-clés, ${c.designSummary.dialogueNodes} nœuds dialogue`
+    );
+  if (c.reviewSummary)
+    lines.push(
+      `- Review : CECR ${c.reviewSummary.targetCEFR}, QA ${c.reviewSummary.qaPassed}/${c.reviewSummary.qaTotal}`
+    );
+  if (c.productionSummary)
+    lines.push(
+      `- Production : publié=${c.productionSummary.publishedScenarioId ?? "non"}, prêt=${c.productionSummary.productionReady}, serverId=${c.productionSummary.serverId ?? "—"}`
+    );
+  return lines;
+}
+
+/** Instruction commune aux outils Brainstorm / Design / Review (hors chat). */
+function formatStudioContextForTools(
+  c: StudioChatContext | undefined,
+  opts?: { maxSnapshotJsonChars?: number }
+): string {
+  const lines = studioContextLines(c);
+  const summaryPart =
+    lines.length > 0
+      ? `\n\nContexte UI / état du projet (résumé factuel) :\n${lines.join("\n")}\nBase tes réponses sur ces faits et sur le snapshot JSON ci-dessous quand il est présent. Si un compteur est à zéro, ne prétends pas que le contenu existe déjà.`
+      : "";
+  let snapPart = formatStudioProjectSnapshotSection(c);
+  if (
+    opts?.maxSnapshotJsonChars != null &&
+    snapPart.length > opts.maxSnapshotJsonChars
+  ) {
+    snapPart =
+      snapPart.slice(0, opts.maxSnapshotJsonChars) +
+      "\n\n[... studioProjectSnapshot tronqué pour limiter la taille du prompt.]";
+  }
+  if (!summaryPart && !snapPart) return "";
+  return `${summaryPart}${snapPart}${snapshotTruthInstructions(false)}`;
+}
+
+function filterCompleteBrainstormIdeas(
+  ideas: { theme: string; title: BrainstormLangRecord; desc: BrainstormLangRecord }[]
+): { theme: string; title: BrainstormLangRecord; desc: BrainstormLangRecord }[] {
+  const langs = ["fr", "en", "es"] as const;
+  return ideas.filter((idea) => {
+    const theme = typeof idea.theme === "string" ? idea.theme.trim() : "";
+    if (!theme) return false;
+    for (const k of langs) {
+      const tv = idea.title?.[k]?.trim();
+      const dv = idea.desc?.[k]?.trim();
+      if (!tv || !dv) return false;
+    }
+    return true;
+  });
+}
+
+/** Budget sortie : titres + descriptions trilingues par idée → bien au-delà de 1200 tokens pour N>3. */
+function brainstormOutputMaxTokens(count: number): number {
+  return Math.min(8192, Math.max(2048, 600 + count * 500));
+}
+
 export async function generateBrainstormIdeas(body: BrainstormBody) {
   const systemPrompt = `You are a creative scenario designer for Nomi, an AI language learning platform. \
 Generate diverse, engaging scenario concepts for the "${body.segment}" segment. \
-All text fields (title, desc) must be provided in both French (fr) and English (en). \
-Ideas should be grounded in realistic social interactions, culturally relevant, and teachable in 5–15 minutes.`;
+For each idea, title and desc MUST include all three languages: French (fr), English (en), and Spanish (es). \
+No empty strings for fr, en, or es in title or desc. \
+Ideas should be grounded in realistic social interactions, culturally relevant, and teachable in 5–15 minutes. \
+When a factual context block is appended to the user message, respect board counts and phase; do not contradict them.`;
 
-  const userPrompt = `Generate ${body.count} brainstorm ideas for a project called "${body.projectName}" \
-in the "${body.theme}" theme.${body.prompt ? `\n\nAdditional direction: ${body.prompt}` : ""}`;
+  const runOnce = async (
+    maxTokens: number,
+    retryDirective: string
+  ): Promise<{
+    ideas: { theme: string; title: BrainstormLangRecord; desc: BrainstormLangRecord }[];
+    stopReason: Anthropic.Messages.Message["stop_reason"];
+  }> => {
+    const ctxBlock = formatStudioContextForTools(body.context, {
+      maxSnapshotJsonChars: 14_000,
+    });
+    const baseUser = `Generate exactly ${body.count} brainstorm ideas for a project called "${body.projectName}" \
+in the "${body.theme}" theme.${body.prompt ? `\n\nAdditional direction: ${body.prompt}` : ""}${retryDirective}${ctxBlock}`;
 
-  const response = await anthropicClient().messages.create({
-    model: studioModel(),
-    max_tokens: 1200,
-    system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-    tools: [BRAINSTORM_TOOL],
-    tool_choice: { type: "tool", name: "brainstorm_ideas" },
-    messages: [{ role: "user", content: userPrompt }],
-  });
+    const response = await anthropicClient().messages.create({
+      model: studioModel(),
+      max_tokens: maxTokens,
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+      tools: [BRAINSTORM_TOOL],
+      tool_choice: { type: "tool", name: "brainstorm_ideas" },
+      messages: [{ role: "user", content: baseUser }],
+    });
 
-  return extractToolInput<{
-    ideas: { theme: string; title: LangRecord; desc: LangRecord }[];
-  }>(response, "brainstorm_ideas");
+    const raw = extractToolInput<{
+      ideas?: { theme: string; title: BrainstormLangRecord; desc: BrainstormLangRecord }[];
+    }>(response, "brainstorm_ideas");
+    const rawList = Array.isArray(raw.ideas) ? raw.ideas : [];
+    const ideas = filterCompleteBrainstormIdeas(rawList);
+    return { ideas, stopReason: response.stop_reason };
+  };
+
+  const maxTok = brainstormOutputMaxTokens(body.count);
+  let { ideas, stopReason } = await runOnce(maxTok, "");
+
+  const needsRetry =
+    ideas.length === 0 ||
+    (stopReason === "max_tokens" && ideas.length < body.count);
+
+  if (needsRetry) {
+    const retryDirective = `\n\nIMPORTANT: Output exactly ${body.count} complete ideas in the tool. \
+Each title and desc must include non-empty strings for fr, en, and es. \
+If the previous attempt was truncated, use shorter wording per field while keeping all languages filled.`;
+    const second = await runOnce(8192, retryDirective);
+    ideas = second.ideas;
+    stopReason = second.stopReason;
+  }
+
+  if (ideas.length === 0) {
+    throw new Error(
+      "Brainstorm IA : aucune idée valide (réponse tronquée ou champs fr/en/es manquants). Réduisez le nombre d'idées demandées (ex. 3), raccourcissez le contexte, puis réessayez."
+    );
+  }
+
+  return { ideas };
 }
 
 export async function generateDesign(body: DesignBody) {
+  const ctxBlock = formatStudioContextForTools(body.context);
   const systemPrompt = `You are a scenario design expert for Nomi language learning platform. \
 Structure interactive dialogue-based scenarios with measurable learning objectives. \
 Target CEFR B1–B2 unless context specifies otherwise. \
-All text fields (title, desc, text, label) must be provided in both French (fr) and English (en).`;
+All text fields (title, desc, text, label) must be provided in both French (fr) and English (en). \
+When a factual context block is appended to the user message, align with the active scenario and counts; do not pretend draft content exists when counts are zero.`;
 
   const userPrompt = `Design elements for the project "${body.projectName}" (${body.segment || "general"} segment).
 Scope: ${body.scope}.
 ${body.prompt ? `Context: ${body.prompt}` : ""}
 ${body.scope.includes("Goals") ? "- Provide 3 objectives with title, desc (both fr/en), and icon (check/dots/smile)." : ""}
 ${body.scope.includes("Keywords") ? "- Provide 5–8 vocabulary keywords, each with label in fr and en." : ""}
-${body.scope.includes("Node") || body.scope === "Just a Node" ? "- Provide one opening dialogue node (segment label, text in fr/en, tone)." : ""}`;
+${body.scope.includes("Node") || body.scope === "Just a Node" ? "- Provide one opening dialogue node (segment label, text in fr/en, tone)." : ""}${ctxBlock}`;
 
   const response = await anthropicClient().messages.create({
     model: studioModel(),
@@ -292,25 +467,32 @@ ${body.scope.includes("Node") || body.scope === "Just a Node" ? "- Provide one o
     messages: [{ role: "user", content: userPrompt }],
   });
 
-  return extractToolInput<{
-    objectives: { title: LangRecord; desc: LangRecord; icon: string }[];
-    keywords: { label: LangRecord }[];
+  const raw = extractToolInput<{
+    objectives?: { title: LangRecord; desc: LangRecord; icon: string }[];
+    keywords?: { label: LangRecord }[];
     dialogueNode?: { segment: string; text: LangRecord; tone: string } | null;
   }>(response, "design_scenario");
+  return {
+    objectives: Array.isArray(raw.objectives) ? raw.objectives : [],
+    keywords: Array.isArray(raw.keywords) ? raw.keywords : [],
+    dialogueNode: raw.dialogueNode ?? null,
+  };
 }
 
 export async function generateReview(body: ReviewBody) {
+  const ctxBlock = formatStudioContextForTools(body.context);
   const systemPrompt = `You are a pedagogical critic agent for Nomi language learning scenarios. \
 Analyze scenario drafts for CEFR level consistency, vocabulary appropriateness, tone, \
 grammar complexity, and cultural inclusivity. Be concise and actionable. \
-Write suggestions and summary in French.`;
+Write suggestions and summary in French. \
+Use the factual context block when present; do not claim dialogue or QA state that contradicts the summary.`;
 
   const userPrompt = `Review the scenario "${body.projectName}" targeting CEFR ${body.targetCEFR}.
 Focus: ${body.focus}.
 ${body.dialogueSnippet ? `\nScenario excerpt:\n${body.dialogueSnippet}` : ""}
 ${body.prompt ? `\nSpecific question: ${body.prompt}` : ""}
 
-Provide targeted suggestions and a one-sentence summary.`;
+Provide targeted suggestions and a one-sentence summary.${ctxBlock}`;
 
   const response = await anthropicClient().messages.create({
     model: studioModel(),
@@ -321,17 +503,34 @@ Provide targeted suggestions and a one-sentence summary.`;
     messages: [{ role: "user", content: userPrompt }],
   });
 
-  return extractToolInput<{
-    suggestions: { category: string; message: string; severity: string }[];
-    summary: string;
+  const raw = extractToolInput<{
+    suggestions?: { category: string; message: string; severity: string }[];
+    summary?: string;
   }>(response, "review_scenario");
+  return {
+    suggestions: Array.isArray(raw.suggestions) ? raw.suggestions : [],
+    summary: typeof raw.summary === "string" ? raw.summary : "",
+  };
+}
+
+function formatChatContextForPrompt(body: ChatBody): string {
+  const lines = studioContextLines(body.context);
+  const summaryPart =
+    lines.length > 0
+      ? `\n\nContexte UI / état (résumé) :\n${lines.join("\n")}\nRéponds en tenant compte de cette vue.`
+      : "";
+  const snapPart = formatStudioProjectSnapshotSection(body.context);
+  if (!summaryPart && !snapPart) return "";
+  return `${summaryPart}${snapPart}${snapshotTruthInstructions(true)}`;
 }
 
 export async function generateChatReply(body: ChatBody) {
+  const ctxBlock = formatChatContextForPrompt(body);
   const systemPrompt = `Tu es un agent studio collaboratif appelé Nomi qui aide un concepteur pédagogique \
 à développer un scénario d'apprentissage des langues pour le segment "${body.segment || "général"}". \
 Sois concis, créatif et actionnable. Propose des prochaines étapes concrètes. \
-Réponds toujours avec une réponse structurée et 1–3 actions suggérées que le concepteur peut cliquer.`;
+Réponds toujours avec une réponse structurée et 1–3 actions suggérées que le concepteur peut cliquer. \
+Si tu inclus structuredIdea (carte idée), title et desc doivent obligatoirement contenir les clés fr, en et es avec du texte rédigé dans chaque langue.${ctxBlock}`;
 
   const history: Anthropic.MessageParam[] = body.history.map((m) => ({
     role: m.role === "user" ? "user" : "assistant",
@@ -345,18 +544,47 @@ Réponds toujours avec une réponse structurée et 1–3 actions suggérées que
 
   const response = await anthropicClient().messages.create({
     model: studioModel(),
-    max_tokens: 512,
+    max_tokens: 1024,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [CHAT_TOOL],
     tool_choice: { type: "tool", name: "brainstorm_chat_reply" },
     messages,
   });
 
-  return extractToolInput<{
+  const raw = extractToolInput<{
     reply: string;
     suggestedActions?: { id: string; label: string }[];
-    structuredIdea?: { theme: string; title: LangRecord; desc: LangRecord };
+    structuredIdea?: { theme: string; title: BrainstormLangRecord; desc: BrainstormLangRecord };
+    uiActions?: Array<{
+      op: string;
+      ideaId?: string;
+      ideaStatus?: string;
+      phase?: string;
+    }>;
   }>(response, "brainstorm_chat_reply");
+
+  const uiActions =
+    raw.uiActions?.map((a) => {
+      if (a.op === "setIdeaStatus" && a.ideaId && a.ideaStatus)
+        return {
+          op: "setIdeaStatus" as const,
+          ideaId: a.ideaId,
+          status: a.ideaStatus as "idea" | "toValidate" | "approved",
+        };
+      if (a.op === "setPhase" && a.phase)
+        return {
+          op: "setPhase" as const,
+          phase: a.phase as "brainstorming" | "design" | "review" | "production",
+        };
+      return null;
+    }).filter((x): x is NonNullable<typeof x> => x != null) ?? [];
+
+  return {
+    reply: raw.reply,
+    suggestedActions: raw.suggestedActions,
+    structuredIdea: raw.structuredIdea,
+    uiActions,
+  };
 }
 
 const SCENARIO_COMPLIANCE_TOOL: Anthropic.Tool = {

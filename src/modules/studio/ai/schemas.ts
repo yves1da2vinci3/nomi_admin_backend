@@ -1,6 +1,58 @@
 import { z } from "zod";
+import { studioProjectSnapshotSchema } from "./snapshot-schema.js";
 
 const langRecordSchema = z.object({ fr: z.string(), en: z.string() });
+
+const chatMessageSchema = z.object({
+  role: z.enum(["user", "agent"]),
+  text: z.string(),
+});
+
+export const studioChatContextSchema = z
+  .object({
+    studioPhase: z.enum(["brainstorming", "design", "review", "production"]).optional(),
+    activeIdeaId: z.string().nullable().optional(),
+    activeIdeaSummary: z
+      .object({
+        fr: z.string(),
+        en: z.string(),
+        es: z.string().optional(),
+      })
+      .optional(),
+    ideasOverview: z
+      .object({
+        idea: z.number().int().nonnegative(),
+        toValidate: z.number().int().nonnegative(),
+        approved: z.number().int().nonnegative(),
+      })
+      .optional(),
+    designSummary: z
+      .object({
+        objectives: z.number().int().nonnegative(),
+        keywords: z.number().int().nonnegative(),
+        dialogueNodes: z.number().int().nonnegative(),
+      })
+      .optional(),
+    reviewSummary: z
+      .object({
+        targetCEFR: z.string(),
+        qaPassed: z.number().int().nonnegative(),
+        qaTotal: z.number().int().nonnegative(),
+      })
+      .optional(),
+    productionSummary: z
+      .object({
+        publishedScenarioId: z.string().nullable(),
+        productionReady: z.boolean(),
+        serverId: z.string().nullable(),
+      })
+      .optional(),
+    studioProjectSnapshot: studioProjectSnapshotSchema.optional(),
+  })
+  .optional();
+
+/** Contexte Studio : snapshot peut diverger légèrement du schéma Zod strict ; on accepte tout objet pour ne pas bloquer les routes IA. */
+const looseStudioContextSchema = z.any().optional();
 
 export const brainstormBodySchema = z.object({
   projectName: z.string().min(1),
@@ -8,6 +60,7 @@ export const brainstormBodySchema = z.object({
   theme: z.string().optional().default("General"),
   prompt: z.string().optional().default(""),
   count: z.coerce.number().int().min(1).max(8).default(5),
+  context: looseStudioContextSchema,
 });
 
 export const designBodySchema = z.object({
@@ -17,6 +70,7 @@ export const designBodySchema = z.object({
   scope: z
     .enum(["Goals + Keywords", "Goals + Keywords + Node", "Just a Node"])
     .default("Goals + Keywords + Node"),
+  context: looseStudioContextSchema,
 });
 
 export const reviewBodySchema = z.object({
@@ -25,11 +79,7 @@ export const reviewBodySchema = z.object({
   focus: z.string().optional().default("All of the above"),
   prompt: z.string().optional().default(""),
   dialogueSnippet: z.string().optional().default(""),
-});
-
-const chatMessageSchema = z.object({
-  role: z.enum(["user", "agent"]),
-  text: z.string(),
+  context: looseStudioContextSchema,
 });
 
 export const chatBodySchema = z.object({
@@ -37,6 +87,7 @@ export const chatBodySchema = z.object({
   segment: z.string().optional().default(""),
   message: z.string().min(1),
   history: z.array(chatMessageSchema).max(20).default([]),
+  context: studioChatContextSchema,
 });
 
 export const publishScenarioBodySchema = z.object({
@@ -89,5 +140,6 @@ export type BrainstormBody = z.infer<typeof brainstormBodySchema>;
 export type DesignBody = z.infer<typeof designBodySchema>;
 export type ReviewBody = z.infer<typeof reviewBodySchema>;
 export type ChatBody = z.infer<typeof chatBodySchema>;
+export type StudioChatContext = z.infer<typeof studioChatContextSchema>;
 export type PublishScenarioBody = z.infer<typeof publishScenarioBodySchema>;
 export type ScenarioChatBody = z.infer<typeof scenarioChatBodySchema>;

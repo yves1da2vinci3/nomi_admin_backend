@@ -4,7 +4,9 @@ const keyId = process.env.B2_KEY_ID;
 const applicationKey = process.env.B2_APPLICATION_KEY;
 const bucketId = process.env.B2_BUCKET_ID;
 const bucketName = process.env.B2_BUCKET_NAME || "nomiBucket";
-const downloadUrl = process.env.B2_DOWNLOAD_URL;
+/** Base URL pour `…/file/{bucket}/{path}` — alias nomi_backend : `BACKBLAZE_BUCKET_URL`. */
+const downloadUrl =
+  process.env.B2_DOWNLOAD_URL || process.env.BACKBLAZE_BUCKET_URL;
 
 if (!keyId || !applicationKey || !bucketId || !downloadUrl) {
   console.warn(
@@ -67,7 +69,9 @@ export async function uploadAdminImage(
   contentType: string
 ): Promise<string> {
   if (!keyId || !applicationKey || !bucketId || !downloadUrl) {
-    throw new Error("Backblaze B2 credentials are not configured (B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_ID, B2_DOWNLOAD_URL required)");
+    throw new Error(
+      "Backblaze B2 credentials are not configured (B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_ID, and B2_DOWNLOAD_URL or BACKBLAZE_BUCKET_URL required)"
+    );
   }
 
   const b2FileName = `admin-scenarios/${filename}`;

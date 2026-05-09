@@ -25,6 +25,8 @@ const schema = z.object({
   B2_BUCKET_ID: z.string().optional(),
   B2_BUCKET_NAME: z.string().optional().default("nomiBucket"),
   B2_DOWNLOAD_URL: z.string().optional(),
+  /** Alias courant (ex. nomi_backend) pour la base d’URL fichiers B2. */
+  BACKBLAZE_BUCKET_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
