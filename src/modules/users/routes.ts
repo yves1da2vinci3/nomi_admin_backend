@@ -16,6 +16,8 @@ import {
 } from "./service.js";
 import { getUserAdminDetail } from "./detail-service.js";
 import { getUsersAnalyticsSummary } from "./analytics-service.js";
+import { listLearnedWordsQuerySchema } from "../learned-words/schemas.js";
+import { listLearnedWordsForUser } from "../learned-words/service.js";
 
 export const usersRouter = Router();
 
@@ -60,6 +62,16 @@ usersRouter.get("/:id/detail", async (req, res, next) => {
       return;
     }
     res.json({ success: true, data: detail });
+  } catch (e) {
+    next(e);
+  }
+});
+
+usersRouter.get("/:id/learned-words", async (req, res, next) => {
+  try {
+    const q = listLearnedWordsQuerySchema.parse(req.query);
+    const { rows, total } = await listLearnedWordsForUser(req.params.id, q);
+    res.json({ success: true, data: { words: rows, total, skip: q.skip, take: q.take } });
   } catch (e) {
     next(e);
   }

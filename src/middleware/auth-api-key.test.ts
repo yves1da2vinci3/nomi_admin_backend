@@ -13,6 +13,7 @@ const testEnv: Env = {
   JWT_EXPIRES_IN: "8h",
   ANTHROPIC_API_KEY: "sk-ant-test-key-1234567890",
   ANTHROPIC_MODEL: "claude-haiku-4-5-20251001",
+  NOMI_CORE_URL: "http://localhost:8088",
   B2_BUCKET_NAME: "nomiBucket",
 };
 

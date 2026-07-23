@@ -22,9 +22,12 @@ export function mapGameToStoryListItem(g: GeneratedGame) {
   const gd = g.gameData;
   return {
     id: g.id,
+    userId: g.userId,
+    gameType: g.gameType,
     status: g.status,
     difficulty: g.difficulty,
     learningLanguage: g.learningLanguage,
+    userLanguage: g.userLanguage,
     createdAt: g.createdAt.toISOString(),
     titleDisplay: extractTitle(gd) ?? `Story ${g.id.slice(0, 8)}`,
     themeDisplay: extractTheme(gd),
@@ -47,11 +50,13 @@ export async function listGeneratedGames(params: {
   skip: number;
   take: number;
   gameType?: string;
+  excludeGameType?: string;
   status?: string;
   userId?: string;
 }) {
   const where: Record<string, unknown> = {};
   if (params.gameType) where.gameType = params.gameType;
+  else if (params.excludeGameType) where.gameType = { not: params.excludeGameType };
   if (params.status) where.status = params.status;
   if (params.userId) where.userId = params.userId;
 

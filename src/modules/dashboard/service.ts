@@ -30,6 +30,10 @@ export type DashboardMetrics = {
   };
   diary: { notificationsEmitted: number; notificationsTotal: number };
   difficultyDistribution: Array<{ level: string; count: number }>;
+  gec: {
+    total: number;
+    byErrorType: Array<{ errorType: string; count: number; avgConfidence: number | null }>;
+  };
 };
 
 export async function getDashboardMetrics(queryDays: unknown): Promise<DashboardMetrics> {
@@ -52,6 +56,8 @@ export async function getDashboardMetrics(queryDays: unknown): Promise<Dashboard
     diaryNotifications,
     difficultyRows,
     topUsersByGames,
+    gecTotal,
+    gecByErrorType,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { createdAt: { gte: since } } }),
@@ -99,6 +105,13 @@ export async function getDashboardMetrics(queryDays: unknown): Promise<Dashboard
       _count: { userId: true },
       orderBy: { _count: { userId: "desc" } },
       take: 25,
+    }),
+    prisma.gECCorrection.count({ where: { createdAt: { gte: since } } }),
+    prisma.gECCorrection.groupBy({
+      by: ["errorType"],
+      where: { createdAt: { gte: since } },
+      _count: { _all: true },
+      _avg: { confidence: true },
     }),
   ]);
 
@@ -150,5 +163,13 @@ export async function getDashboardMetrics(queryDays: unknown): Promise<Dashboard
       level: r.level ?? "unknown",
       count: r._count.level,
     })),
+    gec: {
+      total: gecTotal,
+      byErrorType: gecByErrorType.map((r) => ({
+        errorType: r.errorType ?? "unknown",
+        count: r._count._all,
+        avgConfidence: r._avg.confidence,
+      })),
+    },
   };
 }

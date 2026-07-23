@@ -11,6 +11,14 @@ import { studioProjectsRouter } from "../modules/studio/projects/routes.js";
 import { createStudioAiRouter } from "../modules/studio/ai/routes.js";
 import { interpreterRouter } from "../modules/interpreter/routes.js";
 import { settingsRouter } from "../modules/settings/routes.js";
+import { sessionsRouter } from "../modules/sessions/routes.js";
+import {
+  interpreterSessionsRouter,
+  interpreterPracticeRunsRouter,
+} from "../modules/interpreter-sessions/routes.js";
+import { diaryRouter } from "../modules/diary/routes.js";
+import { learnedWordsRouter } from "../modules/learned-words/routes.js";
+import { opsRouter } from "../modules/ops/routes.js";
 
 export function mountRoutes(app: Router, env: Env) {
   app.use("/dashboard", dashboardRouter);
@@ -24,4 +32,10 @@ export function mountRoutes(app: Router, env: Env) {
   app.use("/studio/ai", createStudioAiRouter(env));
   app.use("/interpreter-scenarios", interpreterRouter);
   app.use("/settings", settingsRouter);
+  app.use("/sessions", sessionsRouter);
+  app.use("/interpreter-sessions", interpreterSessionsRouter);
+  app.use("/interpreter-practice-runs", interpreterPracticeRunsRouter);
+  app.use("/diary", diaryRouter);
+  app.use("/learned-words", learnedWordsRouter);
+  app.use("/ops", opsRouter);
 }

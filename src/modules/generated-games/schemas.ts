@@ -4,6 +4,7 @@ export const listGeneratedGamesQuerySchema = z.object({
   skip: z.coerce.number().int().min(0).default(0),
   take: z.coerce.number().int().min(1).max(200).default(50),
   gameType: z.string().optional(),
+  excludeGameType: z.string().optional(),
   status: z.string().optional(),
   userId: z.string().uuid().optional(),
 });

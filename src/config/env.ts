@@ -21,6 +21,10 @@ const schema = z.object({
     .transform((s) => (s && s.length >= 10 ? s : undefined)),
   ANTHROPIC_MODEL: z.string().optional().default("claude-haiku-4-5-20251001"),
   REDIS_URL: z.string().url().optional(),
+  /** nomi-core (voice/diary service) — used to fetch per-user diary voice-stats for UserDetail. */
+  NOMI_CORE_URL: z.string().optional().default("http://localhost:8088"),
+  /** Optional — Expo push send in POST /notifications/test-push falls back to DB-only insert if unset. */
+  EXPO_ACCESS_TOKEN: z.string().optional(),
   B2_KEY_ID: z.string().optional(),
   B2_APPLICATION_KEY: z.string().optional(),
   B2_BUCKET_ID: z.string().optional(),

@@ -5,7 +5,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Pooled connection (PgBouncer, transaction mode) for the running app.
   url      = env("DATABASE_URL")
+  // Direct connection for `prisma migrate`/introspection — MUST bypass the
+  // pooler (PgBouncer transaction mode breaks migrations). Falls back to
+  // DATABASE_URL when unset so local/dev without a pooler still works.
+  directUrl = env("DIRECT_URL")
 }
 
 enum LexicalBand {
@@ -14,38 +19,51 @@ enum LexicalBand {
   refined
 }
 
+enum VocabularySource {
+  acquired
+  discovered
+  manual
+  diary
+  listening
+  interpreter
+  dictionary
+}
+
 model User {
-  id                String            @id @default(uuid())
-  email             String            @unique
-  uid               String            @unique
-  displayName       String?
-  photoURL          String?
-  isSuspended       Boolean           @default(false)
-  level             String?
-  expoPushToken     String?
-  webPushSubscription Json?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  learningLanguage  String?
-  learningLanguages String[]
-  nativeLanguage    String?
-  learnedWords      LearnedWord[]
-  scenarioSessions  ScenarioSession[]
-  interpreterSessions InterpreterSession[]
-  userProgress      UserProgress?
+  id                        String                     @id @default(uuid())
+  email                     String                     @unique
+  uid                       String                     @unique
+  displayName               String?
+  photoURL                  String?
+  isSuspended               Boolean                    @default(false)
+  level                     String?
+  expoPushToken             String?
+  webPushSubscription       Json?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  learningLanguage          String?
+  learningLanguages         String[]
+  nativeLanguage            String?
+  learnedWords              LearnedWord[]
+  scenarioSessions          ScenarioSession[]
+  interpreterSessions       InterpreterSession[]
+  interpreterPractices      InterpreterPractice[]
+  interpreterPracticeRuns   InterpreterPracticeRun[]
+  userProgress              UserProgress?
   userLanguageLexicalStages UserLanguageLexicalStage[]
-  storyPlays              StoryPlay[]
+  storyPlays                StoryPlay[]
 }
 
 model UserLanguageLexicalStage {
-  id               String      @id @default(uuid())
-  userId           String
-  languageCode     String
-  lexicalStage     LexicalBand @default(foundational)
-  lastPromotedAt   DateTime?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
-  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                        String      @id @default(uuid())
+  userId                    String
+  languageCode              String
+  lexicalStage              LexicalBand @default(foundational)
+  lastPromotedAt            DateTime?
+  pendingLexicalCelebration Json?
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @updatedAt
+  user                      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, languageCode])
   @@index([userId])
@@ -61,6 +79,7 @@ model Scenario {
   location       String
   theme          String
   imageUrl       String?
+  pnjImageUrl    String?
   isActive       Boolean              @default(true)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
@@ -102,27 +121,27 @@ model ScenarioVocabulary {
 }
 
 model ScenarioSession {
-  id               String          @id @default(uuid())
-  userId           String
-  scenarioId       String
-  learningLanguage String
-  nativeLanguage   String
-  difficulty       String
-  status           String          @default("active")
-  currentStep      Int             @default(0)
-  totalSteps       Int
-  score            Int             @default(0)
-  duration         Int             @default(0)
-  learnedWords     String[]
-  completed        Boolean         @default(false)
-  startedAt        DateTime        @default(now())
-  completedAt      DateTime?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  messages         ChatMessage[]
-  corrections      GECCorrection[]
-  scenario         Scenario        @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String               @id @default(uuid())
+  userId              String
+  scenarioId          String
+  learningLanguage    String
+  nativeLanguage      String
+  difficulty          String
+  status              String               @default("active")
+  currentStep         Int                  @default(0)
+  totalSteps          Int
+  score               Int                  @default(0)
+  duration            Int                  @default(0)
+  learnedWords        String[]
+  completed           Boolean              @default(false)
+  startedAt           DateTime             @default(now())
+  completedAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  messages            ChatMessage[]
+  corrections         GECCorrection[]
+  scenario            Scenario             @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   learnedWordSessions LearnedWordSession[]
 
   @@index([userId, scenarioId, status])
@@ -163,25 +182,26 @@ model GECCorrection {
 }
 
 model LearnedWord {
-  id            String      @id @default(uuid())
-  userId        String
-  word          String
-  language      String
-  context       String?
-  difficulty    Int         @default(1)
-  lexicalBand   LexicalBand @default(foundational)
-  timesUsed     Int         @default(0)
-  timesCorrect  Int         @default(0)
-  lastUsed      DateTime    @default(now())
-  masteryLevel  Float       @default(0.0)
-  status        String      @default("active")
-  isFavorite    Boolean     @default(false)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  learnedWordSessions       LearnedWordSession[]
-  phraseExamples            Json?
-  phraseExamplesExpiresAt   DateTime?
+  id                      String               @id @default(uuid())
+  userId                  String
+  word                    String
+  language                String
+  context                 String?
+  difficulty              Int                  @default(1)
+  lexicalBand             LexicalBand          @default(foundational)
+  timesUsed               Int                  @default(0)
+  timesCorrect            Int                  @default(0)
+  lastUsed                DateTime             @default(now())
+  masteryLevel            Float                @default(0.0)
+  status                  String               @default("active")
+  isFavorite              Boolean              @default(false)
+  vocabularySource        VocabularySource     @default(acquired)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  user                    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learnedWordSessions     LearnedWordSession[]
+  phraseExamples          Json?
+  phraseExamplesExpiresAt DateTime?
 
   @@unique([userId, language, word])
 }
@@ -215,10 +235,10 @@ model UserProgress {
 }
 
 model GeneratedGame {
-  id               String   @id @default(uuid())
+  id               String      @id @default(uuid())
   userId           String
   gameType         String
-  status           String   @default("pending")
+  status           String      @default("pending")
   difficulty       String
   learningLanguage String
   userLanguage     String
@@ -226,8 +246,8 @@ model GeneratedGame {
   words            String[]
   gameData         Json?
   error            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
   plays            StoryPlay[]
 
   @@index([userId, status])
@@ -263,61 +283,156 @@ model Notification {
 }
 
 model InterpreterScenario {
-  id             String               @id @default(uuid())
-  title          Json
-  description    Json
-  location       Json
-  difficulty     String
-  interactionType String              // 'single_pnj' or 'multi_pnj'
-  pnjs           Json                 // Array of { name, role, personality, avatarUrl }
-  imageUrl       String?
-  isActive       Boolean              @default(true)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  objectives     InterpreterObjective[]
-  sessions       InterpreterSession[]
+  id               String                 @id @default(uuid())
+  slug             String?                @unique
+  title            Json
+  description      Json
+  listingTeaser    Json?
+  location         Json
+  difficulty       String
+  estimatedMinutes Int                    @default(8)
+  imageKey         String?
+  theme            String?
+  sessionTones     Json?
+  promptContext    Json?
+  speakers         Json?
+  interactionType  String? // legacy: 'single_pnj' or 'multi_pnj'
+  pnjs             Json? // legacy: Array of { name, role, personality, avatarUrl }
+  imageUrl         String?
+  isActive         Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  objectives       InterpreterObjective[]
+  sessions         InterpreterSession[]
+  practices        InterpreterPractice[]
 
   @@index([difficulty, isActive])
+  @@index([theme, isActive])
+  @@index([slug])
+}
+
+model InterpreterPractice {
+  id               String    @id @default(uuid())
+  userId           String
+  scenarioId       String
+  scenarioSlug     String
+  status           String    @default("pending")
+  turnCount        Int
+  config           Json
+  resolvedSpeakers Json
+  generatedTurns   Json?
+  playCount        Int       @default(0)
+  errorMessage     String?
+  readyAt          DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenario InterpreterScenario      @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  runs     InterpreterPracticeRun[]
+
+  @@index([userId, status])
+  @@index([scenarioSlug])
+}
+
+model InterpreterPracticeRun {
+  id           String    @id @default(uuid())
+  practiceId   String
+  userId       String
+  status       String    @default("active")
+  coreJobId    String?
+  feedback     Json?
+  errorMessage String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  practice InterpreterPractice             @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  user     User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  segments InterpreterPracticeRunSegment[]
+
+  @@index([userId, status])
+  @@index([practiceId])
+}
+
+model InterpreterPracticeRunSegment {
+  id             String  @id @default(uuid())
+  runId          String
+  segmentId      String
+  roundIndex     Int
+  segmentInRound Int
+  activePnjId    String
+  pnjSpeech      String
+  objectiveTitle String
+  objectiveHint  String
+  targetLanguage String
+  userTranscript String?
+  sttStatus      String  @default("pending")
+  scores         Json?
+
+  run InterpreterPracticeRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, segmentId])
+  @@index([runId])
 }
 
 model InterpreterObjective {
-  id              String   @id @default(uuid())
-  scenarioId      String
-  title           Json
-  description     Json
-  order           Int
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  scenario        InterpreterScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  id          String              @id @default(uuid())
+  scenarioId  String
+  title       Json
+  description Json
+  order       Int
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  scenario    InterpreterScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
 
   @@index([scenarioId, order])
 }
 
 model InterpreterSession {
-  id               String          @id @default(uuid())
-  userId           String
-  scenarioId       String
-  learningLanguage String
-  nativeLanguage   String
-  status           String          @default("active")
-  totalObjectives  Int
-  scoresPerObjective Json?         // { objectiveId: { understanding, accuracy, efficiency, translation, score } }
-  audioUrls        Json?           // { objectiveId: { pnjAudioUrl, userAudioUrl } }
-  llmEval          Json?           // LLM evaluation results
-  vocabularySpotlight Json?         // Extracted words/expressions
-  feedback         Json?            // Final feedback with dimensions
-  completed        Boolean         @default(false)
-  startedAt        DateTime        @default(now())
-  completedAt      DateTime?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  scenario         InterpreterScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages         InterpretationMessage[]
+  id                  String                  @id @default(uuid())
+  userId              String
+  scenarioId          String
+  learningLanguage    String
+  nativeLanguage      String
+  status              String                  @default("active")
+  totalObjectives     Int
+  scoresPerObjective  Json? // { objectiveId: { understanding, accuracy, efficiency, translation, score } }
+  audioUrls           Json? // { objectiveId: { pnjAudioUrl, userAudioUrl } }
+  llmEval             Json? // LLM evaluation results
+  vocabularySpotlight Json? // Extracted words/expressions
+  feedback            Json? // Final feedback with dimensions
+  completed           Boolean                 @default(false)
+  startedAt           DateTime                @default(now())
+  completedAt         DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  scenario            InterpreterScenario     @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages            InterpretationMessage[]
 
   @@index([userId, scenarioId, status])
   @@index([status, completed])
+}
+
+model InterpreterAssistanceCache {
+  id               String   @id @default(cuid())
+  scenarioId       String
+  speechHash       String
+  learningLanguage String
+  nativeLanguage   String
+  difficulty       String
+  keywords         Json
+  structure        String
+  starter          String
+  fullSuggestion   String
+  generatedAt      DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([scenarioId, speechHash, learningLanguage, nativeLanguage, difficulty])
+  @@index([scenarioId, learningLanguage, nativeLanguage, difficulty])
 }
 
 model ScenarioKeywordsHintsCache {
@@ -337,31 +452,33 @@ model ScenarioKeywordsHintsCache {
 }
 
 model InterpretationMessage {
-  id             String          @id @default(uuid())
+  id             String             @id @default(uuid())
   sessionId      String
-  type           String          // 'pnj' or 'user'
-  speaker        String          // pnjId or userId
-  content        String          // transcript
+  type           String // 'pnj' or 'user'
+  speaker        String // pnjId or userId
+  content        String // transcript
   audioUrl       String?
   objectiveId    String?
   step           Int
   wordTimestamps Json?
-  timestamp      DateTime        @default(now())
-  createdAt      DateTime        @default(now())
+  timestamp      DateTime           @default(now())
+  createdAt      DateTime           @default(now())
   session        InterpreterSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, step])
   @@index([sessionId, objectiveId])
 }
 
-/** Compte staff pour futur login admin API (admin_backend) — distinct du User app. */
+/**
+ * Compte staff pour futur login admin API (admin_backend) — distinct du User app.
+ */
 model Admin {
-  id             String         @id @default(uuid())
-  email          String         @unique
+  id             String          @id @default(uuid())
+  email          String          @unique
   passwordHash   String
   displayName    String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   studioProjects StudioProject[]
 }
 
@@ -375,4 +492,45 @@ model StudioProject {
   updatedAt DateTime @updatedAt
 
   @@index([adminId])
+}
+
+// Externally managed by the diary service. Declared here so Prisma Migrate
+// preserves the table reconciled by 20260509094500_reconcile_external_tables.
+model ExternalDiaryEntry {
+  id                  String   @id @db.Uuid
+  status              String   @default("pending")
+  audioPath           String   @map("audio_path")
+  durationMs          Int?     @map("duration_ms")
+  rawText             String?  @map("raw_text")
+  correctedText       String?  @map("corrected_text")
+  expectedIpa         String?  @map("expected_ipa")
+  detectedTheme       String?  @map("detected_theme")
+  themeKeywords       Json?    @map("theme_keywords")
+  words               Json?
+  analysis            Json?
+  diff                Json?
+  responseText        String?  @map("response_text")
+  responseAudioPath   String?  @map("response_audio_path")
+  error               String?
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  language            String?
+  userId              String?  @map("user_id")
+  nativeLanguage      String?  @map("native_language")
+  responseTranslation String?  @map("response_translation")
+  audioUrl            String?  @map("audio_url")
+
+  @@index([createdAt(sort: Desc)], map: "idx_diary_entries_created_at")
+  @@index([language], map: "idx_diary_entries_language")
+  @@index([status], map: "idx_diary_entries_status")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_diary_entries_user_id")
+  @@map("diary_entries")
+}
+
+// Migration ledger owned by the external diary service.
+model ExternalSchemaMigration {
+  version BigInt  @id
+  dirty   Boolean
+
+  @@map("schema_migrations")
 }

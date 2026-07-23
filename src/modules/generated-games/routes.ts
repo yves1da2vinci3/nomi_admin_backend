@@ -23,6 +23,7 @@ generatedGamesRouter.get("/", async (req, res, next) => {
       skip: q.skip,
       take: q.take,
       gameType: q.gameType,
+      excludeGameType: q.excludeGameType,
       status: q.status,
       userId: q.userId,
     });
