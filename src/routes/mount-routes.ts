@@ -19,6 +19,10 @@ import {
 import { diaryRouter } from "../modules/diary/routes.js";
 import { learnedWordsRouter } from "../modules/learned-words/routes.js";
 import { opsRouter } from "../modules/ops/routes.js";
+import { b2bModulesRouter } from "../modules/b2b/modules/routes.js";
+import { modulePacksRouter } from "../modules/b2b/module-packs/routes.js";
+import { companiesRouter } from "../modules/b2b/companies/routes.js";
+import { b2bUsageRouter } from "../modules/b2b/usage/routes.js";
 
 export function mountRoutes(app: Router, env: Env) {
   app.use("/dashboard", dashboardRouter);
@@ -38,4 +42,8 @@ export function mountRoutes(app: Router, env: Env) {
   app.use("/diary", diaryRouter);
   app.use("/learned-words", learnedWordsRouter);
   app.use("/ops", opsRouter);
+  app.use("/modules", b2bModulesRouter);
+  app.use("/module-packs", modulePacksRouter);
+  app.use("/companies", companiesRouter);
+  app.use("/b2b-usage", b2bUsageRouter);
 }

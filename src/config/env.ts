@@ -10,10 +10,22 @@ const schema = z.object({
   /** Email paired with ADMIN_API_ACTING_SUB for req.adminAuth (defaults to api-token placeholder). */
   ADMIN_API_ACTING_EMAIL: z.string().email().optional(),
   ADMIN_CORS_ORIGIN: z.string().optional(),
+  /** Origine du portail B2B (`b2b-admin`) autorisée en CORS, ex. http://localhost:3000. */
+  PARTNER_CORS_ORIGIN: z.string().optional(),
   /** HS256 secret for admin JWT (min 32 chars recommended) */
   JWT_SECRET: z.string().min(16),
   /** e.g. 8h, 15m — passed to jose */
   JWT_EXPIRES_IN: z.string().optional().default("8h"),
+  /** Durée de vie du JWT portail partenaire (`PartnerUser`). */
+  PARTNER_JWT_EXPIRES_IN: z.string().optional().default("12h"),
+  /** URL publique du portail B2B — sert de base aux redirections Stripe. */
+  B2B_PORTAL_URL: z.string().optional().default("http://localhost:3000"),
+  /** Optionnel — sans clé, le checkout Stripe bascule en mode simulation. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  /** Optionnel — requis pour vérifier la signature du webhook Stripe. */
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /** Période du balayage d'usage B2B, en ms. `0` désactive l'ordonnanceur. */
+  USAGE_INGEST_INTERVAL_MS: z.coerce.number().int().min(0).default(300_000),
   /** Optional: Studio AI routes return 503 if unset or too short. */
   ANTHROPIC_API_KEY: z
     .string()

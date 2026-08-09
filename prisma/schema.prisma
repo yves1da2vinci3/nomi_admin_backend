@@ -4,9 +4,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   // Pooled connection (PgBouncer, transaction mode) for the running app.
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
   // Direct connection for `prisma migrate`/introspection — MUST bypass the
   // pooler (PgBouncer transaction mode breaks migrations). Falls back to
   // DATABASE_URL when unset so local/dev without a pooler still works.
@@ -52,6 +52,8 @@ model User {
   userProgress              UserProgress?
   userLanguageLexicalStages UserLanguageLexicalStage[]
   storyPlays                StoryPlay[]
+  gamePlays                 GamePlay[]
+  companyLearners           CompanyLearner[]
 }
 
 model UserLanguageLexicalStage {
@@ -249,6 +251,7 @@ model GeneratedGame {
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   plays            StoryPlay[]
+  gamePlays        GamePlay[]
 
   @@index([userId, status])
 }
@@ -260,11 +263,30 @@ model StoryPlay {
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   score       Int?
+  durationSec Int?
 
   user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   game GeneratedGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([userId, gameId])
+  @@index([userId, completedAt])
+  @@index([gameId])
+}
+
+model GamePlay {
+  id          String   @id @default(uuid())
+  userId      String
+  gameId      String
+  gameType    String
+  startedAt   DateTime @default(now())
+  completedAt DateTime @default(now())
+  durationSec Int
+  score       Int?
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game GeneratedGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([userId, gameType])
   @@index([userId, completedAt])
   @@index([gameId])
 }
@@ -533,4 +555,543 @@ model ExternalSchemaMigration {
   dirty   Boolean
 
   @@map("schema_migrations")
+}
+
+// ---------------------------------------------------------------------------
+// B2B — entreprises, cohortes, apprenants, modules, licences.
+// Consommé par admin_backend (admin interne + portail partenaire b2b-admin).
+// ---------------------------------------------------------------------------
+
+enum CompanyOrgType {
+  training_center
+  school
+  enterprise
+}
+
+enum CompanyPlan {
+  pilot
+  center
+  school
+  enterprise
+}
+
+enum PortalRole {
+  org_admin
+  instructor
+  viewer
+}
+
+enum PartnerUserStatus {
+  active
+  pending
+}
+
+enum CohortStatus {
+  upcoming
+  active
+  ended
+  archived
+}
+
+enum LearnerStatus {
+  active
+  inactive
+  never
+}
+
+enum B2bAssignmentStatus {
+  active
+  overdue
+  completed
+  cancelled
+}
+
+enum AssignmentProgressStatus {
+  done
+  pending
+  late
+}
+
+enum PackTier {
+  base
+  addon
+  boost
+}
+
+enum PackBillingPeriod {
+  monthly
+  quarterly
+  one_time
+}
+
+enum PackBadge {
+  popular
+  included_in_plan
+  new
+}
+
+enum EntitlementStatus {
+  active
+  expired
+  pending
+}
+
+enum PurchaseStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum PurchaseCurrency {
+  XOF
+  USD
+}
+
+enum CertificateStatus {
+  draft
+  issued
+  revoked
+}
+
+enum LearningPathStatus {
+  draft
+  active
+  completed
+}
+
+enum ReportFormat {
+  pdf
+  csv
+}
+
+enum NudgeChannel {
+  email
+  digest
+}
+
+/**
+ * Entreprise / centre de formation cliente. `seatsUsed` n'est pas stocké :
+ * il se calcule par `_count` sur `CompanyLearner`.
+ */
+model Company {
+  id            String         @id @default(uuid())
+  name          String
+  slug          String         @unique
+  orgType       CompanyOrgType @default(training_center)
+  plan          CompanyPlan    @default(pilot)
+  seatLimit     Int            @default(0)
+  apiQuotaMonth Int            @default(0)
+  apiUsedMonth  Int            @default(0)
+  logoUrl       String?
+  timezone      String         @default("UTC")
+  renewalDate   DateTime?
+  weeklyDigest  Boolean        @default(true)
+  quotaAlert    Boolean        @default(true)
+  monthlyReport Boolean        @default(false)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  partnerUsers   PartnerUser[]
+  cohorts        Cohort[]
+  learners       CompanyLearner[]
+  assignments    B2bAssignment[]
+  entitlements   CompanyEntitlement[]
+  purchaseOrders PurchaseOrder[]
+  usageEvents    ModuleUsageEvent[]
+  certificates   CompanyCertificate[]
+  learningPaths  LearningPath[]
+  nudgeLogs      NudgeLog[]
+  reports        CompanyReport[]
+
+  @@index([isActive])
+}
+
+/**
+ * Utilisateur du portail b2b-admin — distinct de `Admin` (staff interne)
+ * et de `User` (app mobile).
+ */
+model PartnerUser {
+  id           String            @id @default(uuid())
+  companyId    String
+  email        String            @unique
+  passwordHash String?
+  displayName  String?
+  portalRole   PortalRole        @default(viewer)
+  status       PartnerUserStatus @default(pending)
+  lastLoginAt  DateTime?
+  invitedAt    DateTime          @default(now())
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  company            Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cohortInstructors  CohortInstructor[]
+  createdAssignments B2bAssignment[]
+  sentNudges         NudgeLog[]
+
+  @@index([companyId, status])
+}
+
+model Cohort {
+  id         String       @id @default(uuid())
+  companyId  String
+  name       String
+  inviteCode String       @unique
+  startDate  DateTime
+  endDate    DateTime
+  seatLimit  Int          @default(0)
+  status     CohortStatus @default(upcoming)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  learners            CompanyLearner[]
+  instructors         CohortInstructor[]
+  assignmentCohorts   AssignmentCohort[]
+  learningPathCohorts LearningPathCohort[]
+
+  @@index([companyId, status])
+}
+
+model CohortInstructor {
+  id            String   @id @default(uuid())
+  cohortId      String
+  partnerUserId String
+  createdAt     DateTime @default(now())
+
+  cohort      Cohort      @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  partnerUser PartnerUser @relation(fields: [partnerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, partnerUserId])
+  @@index([partnerUserId])
+}
+
+/**
+ * Apprenant rattaché à une entreprise. `userId` reste null tant que la personne
+ * n'a pas créé son compte app Nomi (invitation par email / code cohorte).
+ */
+model CompanyLearner {
+  id             String        @id @default(uuid())
+  companyId      String
+  cohortId       String
+  userId         String?
+  email          String
+  name           String
+  cefrLevel      String?
+  status         LearnerStatus @default(never)
+  invitedAt      DateTime      @default(now())
+  enrolledAt     DateTime?
+  lastActivityAt DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cohort  Cohort  @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  assignmentProgress AssignmentProgress[]
+  certificates       CompanyCertificate[]
+  usageEvents        ModuleUsageEvent[]
+
+  @@unique([companyId, email])
+  @@unique([companyId, userId])
+  @@index([cohortId, status])
+  @@index([userId])
+}
+
+/**
+ * Module produit activable (table éditable depuis `admin/`).
+ * `key` correspond aux domaines existants : scenario, diary, interpreter,
+ * listening_story, review_game.
+ */
+model B2bModule {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  name      Json
+  icon      String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  packItems          ModulePackItem[]
+  entitlementCredits EntitlementCredit[]
+  assignments        B2bAssignment[]
+  usageEvents        ModuleUsageEvent[]
+  learningPathWeeks  LearningPathWeek[]
+
+  @@index([isActive, sortOrder])
+}
+
+model ModulePack {
+  id            String            @id @default(uuid())
+  slug          String            @unique
+  name          String
+  tagline       String?
+  tier          PackTier          @default(addon)
+  billingPeriod PackBillingPeriod @default(monthly)
+  priceFcfa     Int               @default(0)
+  priceUsdCents Int               @default(0)
+  badge         PackBadge?
+  features      String[]
+  isActive      Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  items          ModulePackItem[]
+  entitlements   CompanyEntitlement[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([isActive, tier])
+}
+
+model ModulePackItem {
+  id             String @id @default(uuid())
+  packId         String
+  moduleId       String
+  sessionCredits Int    @default(0)
+
+  pack   ModulePack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  module B2bModule  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([packId, moduleId])
+  @@index([moduleId])
+}
+
+model CompanyEntitlement {
+  id          String            @id @default(uuid())
+  companyId   String
+  packId      String
+  status      EntitlementStatus @default(pending)
+  purchasedAt DateTime          @default(now())
+  expiresAt   DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  company Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pack    ModulePack          @relation(fields: [packId], references: [id], onDelete: Cascade)
+  credits EntitlementCredit[]
+
+  @@index([companyId, status])
+  @@index([packId])
+}
+
+model EntitlementCredit {
+  id               String @id @default(uuid())
+  entitlementId    String
+  moduleId         String
+  creditsRemaining Int    @default(0)
+
+  entitlement CompanyEntitlement @relation(fields: [entitlementId], references: [id], onDelete: Cascade)
+  module      B2bModule          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([entitlementId, moduleId])
+  @@index([moduleId])
+}
+
+model PurchaseOrder {
+  id              String           @id @default(uuid())
+  companyId       String
+  packId          String
+  amountFcfa      Int
+  currency        PurchaseCurrency @default(XOF)
+  status          PurchaseStatus   @default(pending)
+  stripeSessionId String?          @unique
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pack    ModulePack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+}
+
+/**
+ * Journal de consommation de crédits. `[sourceType, sourceId]` unique rend
+ * le décrément idempotent (rejeu de webhook / worker sans double débit).
+ */
+model ModuleUsageEvent {
+  id              String   @id @default(uuid())
+  companyId       String
+  learnerId       String?
+  moduleId        String
+  sourceType      String
+  sourceId        String
+  creditsConsumed Int      @default(1)
+  occurredAt      DateTime @default(now())
+
+  company Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  learner CompanyLearner? @relation(fields: [learnerId], references: [id], onDelete: SetNull)
+  module  B2bModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceType, sourceId])
+  @@index([companyId, moduleId, occurredAt])
+  @@index([learnerId])
+}
+
+/**
+ * Devoir assigné à une ou plusieurs cohortes. `targetsAllCohorts` remplace la
+ * sentinelle « tableau de cohortes vide = toutes » du prototype.
+ */
+model B2bAssignment {
+  id                     String              @id @default(uuid())
+  companyId              String
+  moduleId               String
+  title                  String
+  deadline               DateTime
+  message                String?
+  contentType            String?
+  contentId              String?
+  status                 B2bAssignmentStatus @default(active)
+  targetsAllCohorts      Boolean             @default(false)
+  createdByPartnerUserId String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  company              Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  module               B2bModule            @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  createdByPartnerUser PartnerUser?         @relation(fields: [createdByPartnerUserId], references: [id], onDelete: SetNull)
+  cohorts              AssignmentCohort[]
+  progress             AssignmentProgress[]
+
+  @@index([companyId, status])
+  @@index([moduleId])
+}
+
+model AssignmentCohort {
+  id           String @id @default(uuid())
+  assignmentId String
+  cohortId     String
+
+  assignment B2bAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  cohort     Cohort        @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, cohortId])
+  @@index([cohortId])
+}
+
+model AssignmentProgress {
+  id           String                   @id @default(uuid())
+  assignmentId String
+  learnerId    String
+  status       AssignmentProgressStatus @default(pending)
+  submittedAt  DateTime?
+  score        Int?
+  updatedAt    DateTime                 @updatedAt
+
+  assignment B2bAssignment  @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  learner    CompanyLearner @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, learnerId])
+  @@index([learnerId, status])
+}
+
+/**
+ * Certificat = snapshot au moment de l'émission (noms et scores figés).
+ * `cohortId` est volontairement sans clé étrangère.
+ */
+model CompanyCertificate {
+  id             String            @id @default(uuid())
+  companyId      String
+  learnerId      String
+  cohortId       String?
+  learnerName    String
+  cohortName     String?
+  companyName    String
+  issuedAt       DateTime          @default(now())
+  issuedBy       String
+  averageScore   Float             @default(0)
+  totalSessions  Int               @default(0)
+  totalHours     String?
+  cefrLevel      String?
+  scoresByModule Json
+  status         CertificateStatus @default(issued)
+  revokedAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  learner CompanyLearner @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+  @@index([learnerId])
+}
+
+model LearningPath {
+  id          String             @id @default(uuid())
+  companyId   String
+  name        String
+  description String?
+  status      LearningPathStatus @default(draft)
+  activatedAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  company Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  weeks   LearningPathWeek[]
+  cohorts LearningPathCohort[]
+
+  @@index([companyId, status])
+}
+
+model LearningPathWeek {
+  id                 String  @id @default(uuid())
+  pathId             String
+  week               Int
+  moduleId           String
+  assignmentTitle    String
+  deadlineOffsetDays Int     @default(7)
+  description        String?
+
+  path   LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  module B2bModule    @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+
+  @@unique([pathId, week])
+  @@index([moduleId])
+}
+
+model LearningPathCohort {
+  id       String @id @default(uuid())
+  pathId   String
+  cohortId String
+
+  path   LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  cohort Cohort       @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  @@unique([pathId, cohortId])
+  @@index([cohortId])
+}
+
+model NudgeLog {
+  id                  String       @id @default(uuid())
+  companyId           String
+  learnerIds          String[]
+  channel             NudgeChannel @default(email)
+  message             String
+  sentByPartnerUserId String?
+  sentAt              DateTime     @default(now())
+
+  company           Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sentByPartnerUser PartnerUser? @relation(fields: [sentByPartnerUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, sentAt])
+}
+
+model CompanyReport {
+  id          String       @id @default(uuid())
+  companyId   String
+  type        String
+  format      ReportFormat @default(pdf)
+  author      String?
+  cohortId    String?
+  cohortName  String?
+  periodStart DateTime?
+  periodEnd   DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
 }
