@@ -7,6 +7,7 @@ import { partnerLearnersRouter } from "../modules/partner/learners/routes.js";
 import { partnerAssignmentsRouter } from "../modules/partner/assignments/routes.js";
 import { partnerTeamRouter } from "../modules/partner/team/routes.js";
 import { partnerCatalogRouter } from "../modules/partner/catalog/routes.js";
+import { partnerContentsRouter } from "../modules/partner/contents/routes.js";
 import { createPartnerOrdersRouter } from "../modules/partner/orders/routes.js";
 import { partnerCertificatesRouter } from "../modules/partner/certificates/routes.js";
 import { partnerPathsRouter } from "../modules/partner/paths/routes.js";
@@ -26,6 +27,7 @@ export function mountPartnerRoutes(app: Router, env: Env) {
   app.use("/assignments", partnerAssignmentsRouter);
   app.use("/team", partnerTeamRouter);
   app.use("/catalog", partnerCatalogRouter);
+  app.use("/contents", partnerContentsRouter);
   app.use("/orders", createPartnerOrdersRouter(env));
   app.use("/certificates", partnerCertificatesRouter);
   app.use("/paths", partnerPathsRouter);
