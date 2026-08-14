@@ -63,20 +63,32 @@ async function authorize(): Promise<void> {
   }
 }
 
-export async function uploadAdminImage(
-  buffer: Buffer,
-  filename: string,
-  contentType: string
-): Promise<string> {
+function requireB2Config(): void {
   if (!keyId || !applicationKey || !bucketId || !downloadUrl) {
     throw new Error(
-      "Backblaze B2 credentials are not configured (B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_ID, and B2_DOWNLOAD_URL or BACKBLAZE_BUCKET_URL required)"
+      "Backblaze B2 n'est pas configuré (B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_ID, et B2_DOWNLOAD_URL ou BACKBLAZE_BUCKET_URL requis)"
     );
   }
+}
 
-  const b2FileName = `admin-scenarios/${filename}`;
+function sanitizeB2FileName(fileName: string): string {
+  const cleaned = fileName.replace(/^\/+/, "").replace(/\.\./g, "").trim();
+  if (!cleaned || cleaned.length > 500) {
+    throw new Error("Nom de fichier B2 invalide");
+  }
+  return cleaned;
+}
 
-  return await runWithB2Reauth("uploadAdminImage", async () => {
+/** Upload vers B2 avec une clé objet libre (préfixe inclus). */
+export async function uploadB2File(
+  buffer: Buffer,
+  fileName: string,
+  contentType: string
+): Promise<string> {
+  requireB2Config();
+  const b2FileName = sanitizeB2FileName(fileName);
+
+  return await runWithB2Reauth("uploadB2File", async () => {
     const { data: { uploadUrl, authorizationToken } } = await b2.getUploadUrl({ bucketId: bucketId! });
 
     await b2.uploadFile({
@@ -88,8 +100,16 @@ export async function uploadAdminImage(
     });
 
     const url = `${downloadUrl}/file/${bucketName}/${b2FileName}`;
-    new URL(url); // validate URL
-    console.info("[B2] Image uploaded:", url);
+    new URL(url);
+    console.info("[B2] File uploaded:", url);
     return url;
   });
+}
+
+export async function uploadAdminImage(
+  buffer: Buffer,
+  filename: string,
+  contentType: string
+): Promise<string> {
+  return uploadB2File(buffer, `admin-scenarios/${filename}`, contentType);
 }

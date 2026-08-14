@@ -1,8 +1,10 @@
 import { Router } from "express";
 import Joi from "joi";
 import { prisma } from "../../../lib/prisma.js";
+import { httpError } from "../../../lib/http-error.js";
 import { validate } from "../../../middleware/validate.js";
 import { requireCompanyId, requirePortalRole } from "../../../middleware/auth-partner.js";
+import { uploadB2File } from "../../../services/backblazeService.js";
 
 type UpdateSettingsBody = {
   name?: string;
@@ -25,6 +27,39 @@ const updateSettingsBodySchema = Joi.object<UpdateSettingsBody>({
   quotaAlert: Joi.boolean(),
   monthlyReport: Joi.boolean(),
 }).min(1);
+
+const LOGO_MIMES = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+const uploadLogoBodySchema = Joi.object<{ dataUri: string }>({
+  dataUri: Joi.string().min(10).required(),
+});
+
+function parseImageDataUri(dataUri: string): { mime: string; buffer: Buffer } {
+  const match = dataUri.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) {
+    throw httpError(400, "dataUri invalide (format attendu: data:<mime>;base64,<data>)");
+  }
+  const mime = match[1].toLowerCase();
+  if (!LOGO_MIMES.has(mime)) {
+    throw httpError(400, "Type d'image non supporté (png, jpeg, webp, svg)");
+  }
+  const buffer = Buffer.from(match[2], "base64");
+  if (!buffer.length) {
+    throw httpError(400, "Fichier vide");
+  }
+  if (buffer.length > LOGO_MAX_BYTES) {
+    throw httpError(400, "Logo trop volumineux (2 Mo max)");
+  }
+  return { mime, buffer };
+}
+
+function extForMime(mime: string): string {
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/svg+xml") return "svg";
+  if (mime === "image/webp") return "webp";
+  return "png";
+}
 
 export const partnerSettingsRouter = Router();
 
@@ -61,6 +96,27 @@ partnerSettingsRouter.get("/", async (req, res, next) => {
     next(e);
   }
 });
+
+partnerSettingsRouter.post(
+  "/logo",
+  requirePortalRole("org_admin"),
+  validate(uploadLogoBodySchema),
+  async (req, res, next) => {
+    try {
+      const companyId = requireCompanyId(req);
+      const { mime, buffer } = parseImageDataUri((req.body as { dataUri: string }).dataUri);
+      const fileName = `b2b/companies/${companyId}/logo.${extForMime(mime)}`;
+      const url = await uploadB2File(buffer, fileName, mime);
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { logoUrl: url },
+      });
+      res.status(201).json({ success: true, data: { url } });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
 
 partnerSettingsRouter.patch(
   "/",
