@@ -3,7 +3,12 @@ import type { Env } from "../../../config/env.js";
 import { prisma } from "../../../lib/prisma.js";
 import { signPartnerJwt } from "../../../lib/partner-jwt.js";
 import { validate } from "../../../middleware/validate.js";
-import { partnerLoginBodySchema, type PartnerLoginBody } from "./schemas.js";
+import {
+  partnerLoginBodySchema,
+  partnerPatchMeBodySchema,
+  type PartnerLoginBody,
+  type PartnerPatchMeBody,
+} from "./schemas.js";
 
 /** Public: POST /api/v1/partner/auth/login */
 export function createPartnerPublicAuthRouter(env: Env): Router {
@@ -69,7 +74,7 @@ export function createPartnerPublicAuthRouter(env: Env): Router {
   return r;
 }
 
-/** Protégé: GET /api/v1/partner/auth/me */
+/** Protégé: GET/PATCH /api/v1/partner/auth/me */
 export const partnerMeRouter = Router();
 
 partnerMeRouter.get("/me", async (req, res, next) => {
@@ -131,6 +136,62 @@ partnerMeRouter.get("/me", async (req, res, next) => {
           timezone: user.company.timezone,
           renewalDate: user.company.renewalDate?.toISOString() ?? null,
         },
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+partnerMeRouter.patch("/me", validate(partnerPatchMeBodySchema), async (req, res, next) => {
+  try {
+    const sub = req.partnerAuth?.sub;
+    if (!sub) {
+      res.status(401).json({ success: false, error: "Unauthorized" });
+      return;
+    }
+
+    const body = req.body as PartnerPatchMeBody;
+    const user = await prisma.partnerUser.findUnique({ where: { id: sub } });
+    if (!user) {
+      res.status(401).json({ success: false, error: "Unauthorized" });
+      return;
+    }
+
+    const data: { displayName?: string; passwordHash?: string; status?: string } = {};
+
+    if (body.displayName !== undefined) {
+      data.displayName = body.displayName;
+    }
+
+    if (body.newPassword) {
+      if (!user.passwordHash) {
+        res.status(400).json({ success: false, error: "Aucun mot de passe n'est défini pour ce compte" });
+        return;
+      }
+      const ok = await Bun.password.verify(body.currentPassword ?? "", user.passwordHash);
+      if (!ok) {
+        res.status(401).json({ success: false, error: "Mot de passe actuel incorrect" });
+        return;
+      }
+      data.passwordHash = await Bun.password.hash(body.newPassword);
+      data.status = "active";
+    }
+
+    const updated = await prisma.partnerUser.update({
+      where: { id: sub },
+      data,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        id: updated.id,
+        email: updated.email,
+        displayName: updated.displayName ?? updated.email.split("@")[0] ?? "Utilisateur",
+        portalRole: updated.portalRole,
+        status: updated.status,
+        lastLoginAt: updated.lastLoginAt?.toISOString() ?? null,
       },
     });
   } catch (e) {
