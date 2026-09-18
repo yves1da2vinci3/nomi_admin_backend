@@ -1,6 +1,10 @@
 import { prisma } from "../../lib/prisma.js";
 import { getMultilingualField } from "../scenarios/utils.js";
 import { mapGameToStoryListItem } from "../generated-games/service.js";
+import {
+  effectiveSessionTotalSteps,
+  normalizeSessionScore,
+} from "../../lib/sessionScoreNormalize.js";
 
 function extractOverallScore(feedback: unknown): number | null {
   if (!feedback || typeof feedback !== "object") return null;
@@ -154,7 +158,7 @@ export async function getUserAdminDetail(
     sessionCount,
     completedSessionCount,
     durationSum,
-    avgScoreAgg,
+    completedScoreRows,
     generatedGamesRows,
     generatedGamesTotal,
     storyPlayRows,
@@ -179,7 +183,9 @@ export async function getUserAdminDetail(
       where: { userId },
       orderBy: { startedAt: "desc" },
       take: 15,
-      include: { scenario: true },
+      include: {
+        scenario: { include: { _count: { select: { goals: true } } } },
+      },
     }),
     prisma.scenarioSession.count({ where: { userId } }),
     prisma.scenarioSession.count({ where: { userId, completed: true } }),
@@ -187,9 +193,13 @@ export async function getUserAdminDetail(
       where: { userId },
       _sum: { duration: true },
     }),
-    prisma.scenarioSession.aggregate({
+    prisma.scenarioSession.findMany({
       where: { userId, completed: true },
-      _avg: { score: true },
+      select: {
+        score: true,
+        totalSteps: true,
+        scenario: { select: { _count: { select: { goals: true } } } },
+      },
     }),
     prisma.generatedGame.findMany({
       where: { userId },
@@ -333,19 +343,43 @@ export async function getUserAdminDetail(
       }
     : null;
 
-  const mappedSessions = scenarioSessions.map((s) => ({
-    id: s.id,
-    scenarioId: s.scenarioId,
-    scenarioTitle: getMultilingualField(s.scenario.title, language),
-    learningLanguage: s.learningLanguage,
-    difficulty: s.difficulty,
-    status: s.status,
-    score: s.score,
-    durationSec: s.duration,
-    completed: s.completed,
-    startedAt: s.startedAt.toISOString(),
-    completedAt: s.completedAt?.toISOString() ?? null,
-  }));
+  const mappedSessions = scenarioSessions.map((s) => {
+    const steps = effectiveSessionTotalSteps(
+      s.totalSteps,
+      s.scenario?._count?.goals ?? 0
+    );
+    return {
+      id: s.id,
+      scenarioId: s.scenarioId,
+      scenarioTitle: getMultilingualField(s.scenario.title, language),
+      learningLanguage: s.learningLanguage,
+      difficulty: s.difficulty,
+      status: s.status,
+      score: normalizeSessionScore(s.score, steps),
+      durationSec: s.duration,
+      completed: s.completed,
+      startedAt: s.startedAt.toISOString(),
+      completedAt: s.completedAt?.toISOString() ?? null,
+    };
+  });
+
+  const normalizedCompletedScores = completedScoreRows.map((s) =>
+    normalizeSessionScore(
+      s.score,
+      effectiveSessionTotalSteps(
+        s.totalSteps,
+        s.scenario?._count?.goals ?? 0
+      )
+    )
+  );
+  const averageSessionScore =
+    normalizedCompletedScores.length > 0
+      ? Math.round(
+          (normalizedCompletedScores.reduce((a, b) => a + b, 0) /
+            normalizedCompletedScores.length) *
+            10
+        ) / 10
+      : null;
 
   const mappedGames = generatedGamesRows.map(mapGameToStoryListItem);
 
@@ -381,7 +415,7 @@ export async function getUserAdminDetail(
       total: sessionCount,
       completed: completedSessionCount,
       totalDurationSec: durationSum._sum.duration ?? 0,
-      averageScore: avgScoreAgg._avg.score ?? null,
+      averageScore: averageSessionScore,
     },
     generatedGames: mappedGames,
     generatedGamesTotal,
