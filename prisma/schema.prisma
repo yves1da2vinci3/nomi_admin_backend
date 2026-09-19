@@ -207,6 +207,7 @@ model LearnedWord {
 
   @@unique([userId, language, word])
   @@index([userId, language, status, createdAt])
+  @@index([userId, language, status, word])
 }
 
 model LearnedWordSession {
