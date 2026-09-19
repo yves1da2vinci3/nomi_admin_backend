@@ -206,6 +206,7 @@ model LearnedWord {
   phraseExamplesExpiresAt DateTime?
 
   @@unique([userId, language, word])
+  @@index([userId, language, status, createdAt])
 }
 
 model LearnedWordSession {
