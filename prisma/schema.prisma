@@ -133,6 +133,7 @@ model ScenarioSession {
   currentStep         Int                  @default(0)
   totalSteps          Int
   score               Int                  @default(0)
+  scoreBreakdown      Json?
   duration            Int                  @default(0)
   learnedWords        String[]
   completed           Boolean              @default(false)
@@ -189,6 +190,8 @@ model LearnedWord {
   word                    String
   language                String
   context                 String?
+  translation             String?
+  translationLanguage     String?
   difficulty              Int                  @default(1)
   lexicalBand             LexicalBand          @default(foundational)
   timesUsed               Int                  @default(0)
@@ -1096,4 +1099,15 @@ model CompanyReport {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId, createdAt])
+}
+
+/// Single-row kill switch for recurring product jobs (push reminders, What’s Up).
+model OpsControl {
+  id                    String   @id @default("default")
+  allOff                Boolean  @default(false)
+  pushRemindersEnabled  Boolean  @default(true)
+  pushRemindersLangsOff String[] @default([])
+  worldEnabled          Boolean  @default(true)
+  worldLangsOff         String[] @default([])
+  updatedAt             DateTime @updatedAt
 }
