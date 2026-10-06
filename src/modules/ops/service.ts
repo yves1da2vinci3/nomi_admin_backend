@@ -79,7 +79,7 @@ export async function getQueueStatus(): Promise<QueueStatus> {
 const OPS_ID = "default";
 
 const pushLang = z.enum(["en", "es", "fr", "de", "it", "pt"]);
-const worldLang = z.enum(["en", "es", "fr"]);
+const worldLang = z.enum(["en", "es", "de", "fr", "nl", "it", "ja"]);
 
 export const opsSwitchPatchSchema = z
   .object({
