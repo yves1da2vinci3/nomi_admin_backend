@@ -1,5 +1,7 @@
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
+import { z } from "zod";
+import { prisma } from "../../lib/prisma.js";
 
 const QUEUE_NAMES = [
   "game-generator",
@@ -72,4 +74,66 @@ export async function getQueueStatus(): Promise<QueueStatus> {
   );
 
   return { available: true, queues: results };
+}
+
+const OPS_ID = "default";
+
+const pushLang = z.enum(["en", "es", "fr", "de", "it", "pt"]);
+const worldLang = z.enum(["en", "es", "fr"]);
+
+export const opsSwitchPatchSchema = z
+  .object({
+    allOff: z.boolean().optional(),
+    pushRemindersEnabled: z.boolean().optional(),
+    pushRemindersLangsOff: z.array(pushLang).optional(),
+    worldEnabled: z.boolean().optional(),
+    worldLangsOff: z.array(worldLang).optional(),
+  })
+  .strict();
+
+export type OpsSwitchPatch = z.infer<typeof opsSwitchPatchSchema>;
+
+export type OpsSwitches = {
+  allOff: boolean;
+  pushRemindersEnabled: boolean;
+  pushRemindersLangsOff: string[];
+  worldEnabled: boolean;
+  worldLangsOff: string[];
+  updatedAt: string;
+};
+
+function toOpsSwitches(row: {
+  allOff: boolean;
+  pushRemindersEnabled: boolean;
+  pushRemindersLangsOff: string[];
+  worldEnabled: boolean;
+  worldLangsOff: string[];
+  updatedAt: Date;
+}): OpsSwitches {
+  return {
+    allOff: row.allOff,
+    pushRemindersEnabled: row.pushRemindersEnabled,
+    pushRemindersLangsOff: row.pushRemindersLangsOff,
+    worldEnabled: row.worldEnabled,
+    worldLangsOff: row.worldLangsOff,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function getOpsSwitches(): Promise<OpsSwitches> {
+  const row = await prisma.opsControl.upsert({
+    where: { id: OPS_ID },
+    create: { id: OPS_ID },
+    update: {},
+  });
+  return toOpsSwitches(row);
+}
+
+export async function patchOpsSwitches(patch: OpsSwitchPatch): Promise<OpsSwitches> {
+  const row = await prisma.opsControl.upsert({
+    where: { id: OPS_ID },
+    create: { id: OPS_ID, ...patch },
+    update: patch,
+  });
+  return toOpsSwitches(row);
 }
